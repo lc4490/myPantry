@@ -51,7 +51,7 @@ export default function Home() {
   const [numberOfCameras, setNumberOfCameras] = useState(0);
   // ai
   const openai = new OpenAI({
-    apiKey: 'sk-proj-DGrtLWTMXJaIxpNnic7QT3BlbkFJZ7oDE66Dncy39fD6RV7B',
+    apiKey: 'key',
     dangerouslyAllowBrowser: true
   });
   // predict the item from image using
