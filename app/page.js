@@ -134,7 +134,6 @@ export default function Home() {
       pantryList.push({name: doc.id, ...doc.data()})
     })
     setPantry(pantryList)
-    generateRecipes()
 
   }
   useEffect(() => {
@@ -670,7 +669,7 @@ export default function Home() {
         },
       }}
       onClick={() => generateRecipes()}
-      >+</Button>
+      >Generate</Button>
       </Stack>
       <Divider></Divider>
       <Stack paddingX = {2} flexDirection= {'row'} alignItems = {'flex-start'} style={{overflow: 'scroll' }}>
