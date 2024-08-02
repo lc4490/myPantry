@@ -661,7 +661,7 @@ export default function Home() {
         color: 'white',
         borderColor: 'lightgray',
         borderRadius: '50px',
-        fontSize: '1.75rem',
+        fontSize: '1rem',
         '&:hover': {
           backgroundColor: 'darkgray',
           color: 'white',
