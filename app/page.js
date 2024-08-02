@@ -51,6 +51,9 @@ export default function Home() {
     apiKey: openaiApiKey,
     dangerouslyAllowBrowser: true
   });
+  async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
   // predict the item from image using
   async function predictItem(image){
     if(image){
@@ -84,47 +87,77 @@ export default function Home() {
   }
   // craft recipe from pantry items using ai
   async function craftRecipes(pantry) {
-    // Format the pantry list into a string
-    if(pantry.length != 0){
-      const ingredients = pantry.map(item => item.name).join(', ');
-    
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: `Here is a list of ingredients: ${ingredients}. Classify them into foods and non-foods. Create recipes only using the foods provided. Do not use foods that are not in the ingredients list. Only print the recipes. Format it like this: Recipe: Fish & Ham Sandwich (linebreak) Ingredients: Fish, Ham (linebreak) Instructions: Layer slices of ham and cooked fish between two pieces of bread. Serve chilled or grilled.`,
-          },
-        ],
-      });
-    
-      // Extract the response content
-      let result = response.choices[0].message.content.trim().split("\n\n");
-      let recipes = result.map(item => {
-        let parts = item.split("\n");
-        // Initialize variables to store the recipe details
-        let recipe = '';
-        let ingredients = '';
-        let instructions = '';
-        // Check if the expected number of parts exist before accessing them
-        if (parts.length > 0) {
-          recipe = parts[0].split(": ")[1] || '';
+    if (pantry.length !== 0) {
+        const ingredients = pantry.map(item => item.name).join(', ');
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                {
+                    role: 'user',
+                    content: `Here is a list of ingredients: ${ingredients}. Classify them into foods and non-foods. Create recipes only using the foods provided. Do not use foods that are not in the ingredients list. Only print the recipes. Format it like this: Recipe: Fish & Ham Sandwich (linebreak) Ingredients: Fish, Ham (linebreak) Instructions: Layer slices of ham and cooked fish between two pieces of bread. Serve chilled or grilled.`,
+                },
+            ],
+        });
+
+        const result = response.choices[0].message.content.trim().split("\n\n");
+
+        const recipePromises = result.map(async (item) => {
+            const parts = item.split("\n");
+            let recipe = '';
+            let ingredients = '';
+            let instructions = '';
+
+            if (parts.length > 0) {
+                recipe = parts[0].split(": ")[1] || '';
+            }
+            if (parts.length > 1) {
+                ingredients = parts[1].split(": ")[1] || '';
+            }
+            if (parts.length > 2) {
+                instructions = parts[2].split(": ")[1] || '';
+            }
+
+            if (!recipe || !ingredients || !instructions) {
+                console.error('Failed to parse recipe details:', item);
+                return null;
+            }
+
+            const image = await createImage(recipe);
+            return { recipe, ingredients, instructions, image };
+        });
+
+        const recipes = await Promise.all(recipePromises);
+        return recipes.filter(recipe => recipe !== null);
+    }
+    return [];
+}
+
+
+  async function createImage(label) {
+    try {
+        const response = await openai.images.generate({
+            model: 'dall-e-2',
+            prompt: label,
+            n: 1,
+            size: "256x256",
+            response_format: 'b64_json',
+        });
+        const ret = response.data;
+        if (ret && ret.length > 0) {
+            const base64String = ret[0].b64_json;
+            return `data:image/png;base64,${base64String}`;
         }
-        if (parts.length > 1) {
-          ingredients = parts[1].split(": ")[1] || '';
+        return null;
+    } catch (error) {
+        if (error.response && error.response.status === 429) {
+            console.log("Rate limit exceeded. Retrying in 10 seconds...");
+            await sleep(10000); // Wait for 10 seconds
+            return createImage(label); // Retry the request
+        } else {
+            console.error("Error creating image:", error);
         }
-        if (parts.length > 2) {
-          instructions = parts[2].split(": ")[1] || '';
-        }
-        // Handle the case where the expected parts are not found
-        if (!recipe || !ingredients || !instructions) {
-          console.error('Failed to parse recipe details:', item);
-        }
-        return { recipe, ingredients, instructions };
-      });
-      return recipes;
-  }
-  return [];
+    }
   }
 
   const truncateString = (str, num) => {
@@ -536,8 +569,34 @@ export default function Home() {
             p: 4,
           }}
         >
+          
           {selectedRecipe !== null && recipes[selectedRecipe] && (
             <>
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                width="100%"
+                height="100%"
+                >
+              {recipes[selectedRecipe].image && recipes[selectedRecipe].image !== null ? (
+                    <Image 
+                      src={recipes[selectedRecipe].image} // Use the image property from the pantry item
+                      alt={recipes[selectedRecipe].recipe}
+                      width={350} // Adjust width as needed
+                      height={350} // Adjust height as needed
+                      style={{ borderRadius: '10px' }} // Rounded edges
+                    />
+                  ) : (
+                    <Image 
+                      src="/recipe.jpg" // Fallback image if no image is provided
+                      alt={recipes[selectedRecipe].recipe}
+                      width={200} // Adjust width as needed
+                      height={200} // Adjust height as needed
+                      style={{ borderRadius: '10px', objectFit: 'cover' }} // Rounded edges
+                    />
+                  )}
+                  </Box>
               <Typography variant="h6" component="h2" fontWeight='600'>
                 {recipes[selectedRecipe].recipe}
               </Typography>
@@ -674,7 +733,7 @@ export default function Home() {
       </Stack>
       <Divider></Divider>
       <Stack paddingX = {2} flexDirection= {'row'} alignItems = {'flex-start'} style={{overflow: 'scroll' }}>
-        {recipes.map(({ recipe, ingredients, instructions }, index) => (
+        {recipes.map(({ recipe, ingredients, instructions, image }, index) => (
           // <Grid item xs={12} sm={6} md={4} lg={4} key={name}>
           <Button 
           key={index} 
@@ -697,7 +756,7 @@ export default function Home() {
               }}
             >
               <Stack direction={'column'} justifyContent={'space-between'} alignItems={'center'}>
-                {image ? (
+                {image && image !== null ? (
                   <Image 
                     src={image} // Use the image property from the pantry item
                     alt={recipe}
