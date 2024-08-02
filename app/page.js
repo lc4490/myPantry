@@ -134,14 +134,16 @@ export default function Home() {
       pantryList.push({name: doc.id, ...doc.data()})
     })
     setPantry(pantryList)
+    generateRecipes()
+
   }
   useEffect(() => {
-  updatePantry()
+    updatePantry()
   }, [])
   // recipes
   const generateRecipes = async () => {
-    const newRecipes = await craftRecipes(pantry);
-    setRecipes(newRecipes);
+    const recipes = await craftRecipes(pantry);
+    setRecipes(recipes);
   };
 
   // function: add an item to the firestore database. if it exists, add one to count
