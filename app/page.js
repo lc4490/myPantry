@@ -101,12 +101,27 @@ export default function Home() {
       // Extract the response content
       let result = response.choices[0].message.content.trim().split("\n\n");
       let recipes = result.map(item => {
-      let parts = item.split("\n");
-      let recipe = parts[0].split(": ")[1];
-      let ingredients = parts[1].split(": ")[1];
-      let instructions = parts[2].split(": ")[1];
-      return { recipe, ingredients, instructions };
-  });
+        let parts = item.split("\n");
+        // Initialize variables to store the recipe details
+        let recipe = '';
+        let ingredients = '';
+        let instructions = '';
+        // Check if the expected number of parts exist before accessing them
+        if (parts.length > 0) {
+          recipe = parts[0].split(": ")[1] || '';
+        }
+        if (parts.length > 1) {
+          ingredients = parts[1].split(": ")[1] || '';
+        }
+        if (parts.length > 2) {
+          instructions = parts[2].split(": ")[1] || '';
+        }
+        // Handle the case where the expected parts are not found
+        if (!recipe || !ingredients || !instructions) {
+          console.error('Failed to parse recipe details:', item);
+        }
+        return { recipe, ingredients, instructions };
+      });
       return recipes;
   }
   return [];
@@ -144,6 +159,9 @@ export default function Home() {
     const recipes = await craftRecipes(pantry);
     setRecipes(recipes);
   };
+  useEffect(() => {
+    generateRecipes()
+  }, [pantry])
 
   // function: add an item to the firestore database. if it exists, add one to count
   const addItem = async (item, quantity, image) => {
@@ -188,7 +206,6 @@ export default function Home() {
     setSelectedRecipe(index);
     setOpenRecipeModal(true);
   };
-
   // start of the display function
   return (
     // the base og box
@@ -653,23 +670,7 @@ export default function Home() {
       {/* recipes */}
       <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'space-between'} padding = {2}>
       <Typography variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>Recipes</Typography>
-      <Button 
-      sx={{
-        height: "35px",
-        minWidth: "35px",
-        backgroundColor: 'black',
-        color: 'white',
-        borderColor: 'lightgray',
-        borderRadius: '50px',
-        fontSize: '1rem',
-        '&:hover': {
-          backgroundColor: 'darkgray',
-          color: 'white',
-          borderColor: 'black',
-        },
-      }}
-      onClick={() => generateRecipes()}
-      >Generate</Button>
+      
       </Stack>
       <Divider></Divider>
       <Stack paddingX = {2} flexDirection= {'row'} alignItems = {'flex-start'} style={{overflow: 'scroll' }}>
