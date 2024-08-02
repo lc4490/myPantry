@@ -51,8 +51,6 @@ export default function Home() {
   const [numberOfCameras, setNumberOfCameras] = useState(0);
   // ai
   const openai = new OpenAI({
-    apiKey: 'key',
-    dangerouslyAllowBrowser: true
   });
   // predict the item from image using
   async function predictItem(image){
