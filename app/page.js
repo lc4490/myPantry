@@ -14,10 +14,8 @@ import Image from 'next/image';
 import {Camera} from 'react-camera-pro';
 
 // openai-use
-import * as dotenv from 'dotenv';
-dotenv.config()
+const openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 import { OpenAI } from 'openai';
-import { WidthFull } from '@mui/icons-material';
 
 export default function Home() {
   // declare
@@ -51,6 +49,8 @@ export default function Home() {
   const [numberOfCameras, setNumberOfCameras] = useState(0);
   // ai
   const openai = new OpenAI({
+    apiKey: openaiApiKey,
+    dangerouslyAllowBrowser: true
   });
   // predict the item from image using
   async function predictItem(image){
