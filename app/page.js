@@ -22,7 +22,6 @@ export default function Home() {
   const [pantry, setPantry] = useState([])
   // recipes
   const [recipes, setRecipes] = useState([])
-
   const [openRecipeModal, setOpenRecipeModal] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState({});
 
@@ -113,25 +112,6 @@ export default function Home() {
   return [];
   }
 
-  async function makeImage(label) {
-    if(label){
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: `Make an image of this: ${label}.`,
-          },
-        ],
-      });
-      let result = response.choices[0].message.content.trim();
-      return result;
-    }
-
-  }
-  console.log(makeImage("Ham and Cheese Sandwhich"))
-
-
   const truncateString = (str, num) => {
     if (str.length <= num) {
       return str;
@@ -153,7 +133,6 @@ export default function Home() {
     docs.forEach((doc) => {
       pantryList.push({name: doc.id, ...doc.data()})
     })
-    console.log(pantryList)
     setPantry(pantryList)
   }
   useEffect(() => {
@@ -164,11 +143,6 @@ export default function Home() {
     const newRecipes = await craftRecipes(pantry);
     setRecipes(newRecipes);
   };
-
-  // call generateRecipes whenever pantry updates
-  useEffect(() => {
-    generateRecipes();
-  }, [pantry]);
 
   // function: add an item to the firestore database. if it exists, add one to count
   const addItem = async (item, quantity, image) => {
@@ -669,14 +643,33 @@ export default function Home() {
       
       <Image 
         src="/banner.png" // Fallback image if no image is provided
-        // alt={example}
+        alt="banner"
         layout="responsive"
         width={800} // Set width as needed
         height={200} // Set height as needed, maintaining aspect ratio
       />
 
       {/* recipes */}
-      <Typography padding = {2} variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>Recipes</Typography>
+      <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'space-between'} padding = {2}>
+      <Typography variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>Recipes</Typography>
+      <Button 
+      sx={{
+        height: "35px",
+        minWidth: "35px",
+        backgroundColor: 'black',
+        color: 'white',
+        borderColor: 'lightgray',
+        borderRadius: '50px',
+        fontSize: '1.75rem',
+        '&:hover': {
+          backgroundColor: 'darkgray',
+          color: 'white',
+          borderColor: 'black',
+        },
+      }}
+      onClick={() => generateRecipes()}
+      >+</Button>
+      </Stack>
       <Divider></Divider>
       <Stack paddingX = {2} flexDirection= {'row'} alignItems = {'flex-start'} style={{overflow: 'scroll' }}>
         {recipes.map(({ recipe, ingredients, instructions }, index) => (
@@ -757,7 +750,7 @@ export default function Home() {
       <Grid container spacing={2} paddingX={1} style={{ height: '50%', overflow: 'scroll' }}>
         {filteredPantry.map(({ name, count, image }, index) => (
           // <React.Fragment key={name}>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={4} key={index}>
               
               <Box
                 width="100%"
