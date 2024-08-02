@@ -89,7 +89,7 @@ export default function Home() {
       const ingredients = pantry.map(item => item.name).join(', ');
     
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'user',
