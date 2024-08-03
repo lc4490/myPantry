@@ -557,16 +557,19 @@ export default function Home() {
     {/* Recipe Modal */}
     <Modal open={openRecipeModal} onClose={() => setOpenRecipeModal(false)}>
         <Box
+          overflow="auto"
           sx={{
             position: 'absolute',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
             width: 400,
+            height: '90%',
             bgcolor: 'white',
             border: '2px solid #000',
             boxShadow: 24,
             p: 4,
+            
           }}
         >
           
@@ -577,14 +580,15 @@ export default function Home() {
                 justifyContent="center"
                 alignItems="center"
                 width="100%"
-                height="100%"
+                // height="100%"
+                paddingY={2}
                 >
               {recipes[selectedRecipe].image && recipes[selectedRecipe].image !== null ? (
                     <Image 
                       src={recipes[selectedRecipe].image} // Use the image property from the pantry item
                       alt={recipes[selectedRecipe].recipe}
-                      width={350} // Adjust width as needed
-                      height={350} // Adjust height as needed
+                      width={200} // Adjust width as needed
+                      height={200} // Adjust height as needed
                       style={{ borderRadius: '10px' }} // Rounded edges
                     />
                   ) : (
@@ -606,6 +610,24 @@ export default function Home() {
               <Typography sx={{ mt: 2 }}>
                 <strong>Instructions:</strong> {recipes[selectedRecipe].instructions}
               </Typography>
+              <Button 
+                variant="outlined"
+                onClick={() => {
+                  setOpenRecipeModal(false)
+                }}
+                sx={{
+                  backgroundColor: 'black',
+                  color: 'white',
+                  borderColor: 'black',
+                  '&:hover': {
+                    backgroundColor: 'darkgray',
+                    color: 'white',
+                    borderColor: 'black',
+                  },
+                }}
+              >
+                Close
+              </Button>
             </>
           )}
           
