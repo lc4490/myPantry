@@ -595,7 +595,10 @@ export default function Home() {
               <Button
               hidden={numberOfCameras <= 1}
               onClick={() => {
-                cameraRef.current.switchCamera();
+                if (cameraRef.current) {
+                  const result = cameraRef.current.switchCamera();
+                  console.log(result);
+                }
               }}
               sx={{
                 color: 'black',
