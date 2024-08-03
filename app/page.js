@@ -569,7 +569,8 @@ export default function Home() {
             border: '2px solid #000',
             boxShadow: 24,
             p: 4,
-            
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           
@@ -610,6 +611,7 @@ export default function Home() {
               <Typography sx={{ mt: 2 }}>
                 <strong>Instructions:</strong> {recipes[selectedRecipe].instructions}
               </Typography>
+              <Box sx={{ flexGrow: 1 }} /> {/* Spacer element to push the button to the bottom */}
               <Button 
                 variant="outlined"
                 onClick={() => {
