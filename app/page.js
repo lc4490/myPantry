@@ -599,7 +599,7 @@ export default function Home() {
                   const result = cameraRef.current.switchCamera();
                   console.log(result);
                 }
-                }}
+              }}
               sx={{
                 color: 'black',
                 borderColor: 'white',
