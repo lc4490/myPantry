@@ -1,7 +1,7 @@
 "use client"
 
 import {Box, Stack, Typography, Button, Modal, TextField, Grid, Autocomplete, Divider} from '@mui/material'
-import {firestore} from '@/firebase'
+import {firestore, auth, provider, signInWithPopup, signOut} from '@/firebase'
 import {collection, getDocs, query, doc, setDoc, deleteDoc, getDoc} from 'firebase/firestore';
 import { useEffect, useState, useRef } from 'react'
 
@@ -17,6 +17,9 @@ import {Camera} from 'react-camera-pro';
 const openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 import { OpenAI } from 'openai';
 
+// google auth
+import { onAuthStateChanged } from 'firebase/auth';
+
 export default function Home() {
   // declare
   const [pantry, setPantry] = useState([])
@@ -24,7 +27,6 @@ export default function Home() {
   const [recipes, setRecipes] = useState([])
   const [openRecipeModal, setOpenRecipeModal] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState({});
-
   // add modal
   const [openAdd, setOpenAdd] = useState(false);
   const handleOpenAdd = () => {
@@ -38,9 +40,11 @@ export default function Home() {
   
   // miscellaneous, helpers for autocomplete search func, controlling itemName and quantity variables, and moving the search text upon click
   const [searchTerm, setSearchTerm] = useState('');
+  const [recipeSearchTerm, setRecipeSearchTerm] = useState('');
   const[itemName, setItemName] = useState('')
   const[quantity, setQuantity] = useState('')
   const [isFocused, setIsFocused] = useState(false); // Added isFocused state
+  const [isFocusedRecipe, setIsFocusedRecipe] = useState(false); // Added isFocusedRecipe state
   // camera
   const [cameraOpen, setCameraOpen] = useState(false); // State to open the camera
   const [image, setImage] = useState(null); // State to store the captured image
@@ -131,8 +135,7 @@ export default function Home() {
         return recipes.filter(recipe => recipe !== null);
     }
     return [];
-}
-
+  }
 
   async function createImage(label) {
     try {
@@ -174,16 +177,19 @@ export default function Home() {
   };
 
   // function: update the list, pantryList, according to the firestore database
-  const updatePantry = async() => {
-    const snapshot = query(collection(firestore, 'pantry'))
-    const docs = await getDocs(snapshot)
-    const pantryList = []
-    docs.forEach((doc) => {
-      pantryList.push({name: doc.id, ...doc.data()})
-    })
-    setPantry(pantryList)
-
-  }
+  // google auth
+  const updatePantry = async () => {
+    if (auth.currentUser) {
+      const userUID = auth.currentUser.uid;
+      const snapshot = query(collection(firestore, `pantry_${userUID}`));
+      const docs = await getDocs(snapshot);
+      const pantryList = [];
+      docs.forEach((doc) => {
+        pantryList.push({ name: doc.id, ...doc.data() });
+      });
+      setPantry(pantryList);
+    }
+  };
   useEffect(() => {
     updatePantry()
   }, [])
@@ -197,11 +203,20 @@ export default function Home() {
   }, [pantry])
 
   // function: add an item to the firestore database. if it exists, add one to count
+  // google auth
   const addItem = async (item, quantity, image) => {
+    if (guestMode) {
+      setPantry(prevPantry => [...prevPantry, { name: item, count: quantity, image }]);
+    } else {
+      if (!auth.currentUser) {
+        alert("You must be signed in to add items.");
+        return;
+      }
     if (isNaN(quantity) || quantity < 0) {
       setOpenWarningAdd(true);
-    } else if (quantity >= 1 && item != ''){
-      const docRef = doc(collection(firestore, 'pantry'), item);
+    } else if (quantity >= 1 && item != '') {
+      const userUID = auth.currentUser.uid;
+      const docRef = doc(collection(firestore, `pantry_${userUID}`), item);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const { count, image: existingImage } = docSnap.data();
@@ -211,20 +226,31 @@ export default function Home() {
       }
       await updatePantry();
     }
-  };  
+  }
+  }
 
   // function: delete an item from the firestore database. if count >1, count -=1.
+  // google auth
   const handleQuantityChange = async (item, quantity) => {
-    const docRef = doc(collection(firestore, 'pantry'), item)
-    const docSnap = await getDoc(docRef)
-    const {count, image} = docSnap.data()
+    if (guestMode) {
+      setPantry(prevPantry => prevPantry.map(p => p.name === item ? { ...p, count: quantity } : p));
+    } else {
+      if (!auth.currentUser) {
+        alert("You must be signed in to change item quantities.");
+        return;
+      }
+    const userUID = auth.currentUser.uid;
+    const docRef = doc(collection(firestore, `pantry_${userUID}`), item);
+    const docSnap = await getDoc(docRef);
+    const { count, image } = docSnap.data();
     if (0 === quantity) {
       await deleteDoc(docRef);
     } else {
-      await setDoc(docRef, { count: quantity, ...(image && { image })});
+      await setDoc(docRef, { count: quantity, ...(image && { image }) });
     }
-    await updatePantry()
+    await updatePantry();
   }
+  };
 
   // openadd and open camera
   const handleOpenAddAndOpenCamera = () => {
@@ -234,11 +260,62 @@ export default function Home() {
 
   // filter the pantry per search term. the search function calls the list, filteredPantry, which will be edited by the search term
   const filteredPantry = pantry.filter(({ name }) => name.toLowerCase().includes(searchTerm.toLowerCase()));
+  // filer recipes
+  const filteredRecipes = recipes.filter(({ recipe }) => recipe.toLowerCase().includes(recipeSearchTerm.toLowerCase()));
   
   const handleRecipeModal = (index) => {
     setSelectedRecipe(index);
     setOpenRecipeModal(true);
   };
+
+  // google auth
+  const handleSignIn = async () => {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      console.log('User signed in:', user);
+      setGuestMode(false); // Disable guest mode on successful sign-in
+    } catch (error) {
+      console.error('Error signing in:', error);
+      alert('Sign in failed: ' + error.message);
+    }
+  };
+  
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      console.log('User signed out');
+      setUser(null);
+      setGuestMode(true); // Enable guest mode on sign-out
+      setPantry([]); // Clear guest data
+      setRecipes([]); // Clear guest data
+    } catch (error) {
+      console.error('Error signing out:', error);
+      alert('Sign out failed: ' + error.message);
+    }
+  };
+
+  const [user, setUser] = useState(null);
+  // guest users
+  const [guestMode, setGuestMode] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUser(user);
+        setGuestMode(false);
+        updatePantry();
+      } else {
+        setUser(null);
+        setGuestMode(true);
+        setPantry([]);
+        setRecipes([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+// 
+
   // start of the display function
   return (
     // the base og box
@@ -518,8 +595,11 @@ export default function Home() {
               <Button
               hidden={numberOfCameras <= 1}
               onClick={() => {
-                cameraRef.current.switchCamera();
-              }}
+                if (cameraRef.current) {
+                  const result = cameraRef.current.switchCamera();
+                  console.log(result);
+                }
+                }}
               sx={{
                 color: 'black',
                 borderColor: 'white',
@@ -648,7 +728,8 @@ export default function Home() {
       height = "10%" 
       bgcolor = {'white'} 
       display={'flex'}
-      justifyContent={'center'}
+      justifyContent={"space-between"}
+      paddingX = {2.5}
       alignItems={'center'} 
       position={'relative'}
       >
@@ -657,8 +738,8 @@ export default function Home() {
         variant="outlined" 
         onClick={handleOpenAddAndOpenCamera}
         sx={{ 
-          position: 'absolute', 
-          left: "2%",
+          // position: 'absolute', 
+          // left: "2%",
           // top: '50%', 
           // transform: 'translateY(-50%)',
           // width: '15%',
@@ -678,13 +759,69 @@ export default function Home() {
         <Typography variant={'h6'} color = {'#black'} textAlign = {'center'}>
         myPantry
         </Typography>
-        {/* search bar */}
+        
+        {/* sign in */}
+        <Box>
+          {!user ? (
+            <Button 
+            onClick={handleSignIn}
+            alignItems={"center"}
+            sx={{
+              // position: "absolute",
+              justifyContent: "end",
+              right: "2%",
+              backgroundColor: 'white',
+              color: 'black',
+              borderColor: 'black',
+              '&:hover': {
+                backgroundColor: 'black',
+                color: 'white',
+                borderColor: 'black',
+              },
+              alignSelf: 'center',
+            }}
+            >Sign In</Button>
+          ) : (
+            <>
+              <Button 
+              onClick={handleSignOut}
+              sx={{
+                backgroundColor: 'white',
+                color: 'black',
+                borderColor: 'black',
+                borderWidth: 2,
+                '&:hover': {
+                  backgroundColor: 'darkgray',
+                  color: 'white',
+                  borderColor: 'black',
+                },
+              }}
+              >Sign Out</Button>
+            </>
+          )}
+    </Box>
+      </Box>
+
+      <Divider></Divider>
+      
+      <Image 
+        src="/banner.png" // Fallback image if no image is provided
+        alt="banner"
+        layout="responsive"
+        width={800} // Set width as needed
+        height={200} // Set height as needed, maintaining aspect ratio
+      />
+
+      {/* recipes */}
+      <Stack flexDirection={'row'}>
+      <Typography padding = {2} variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>Recipes</Typography>
+        {/* Recipe search bar */}
         <Autocomplete
           freeSolo
           disableClearable
-          options={pantry.map((option) => option.name)}
+          options={recipes.map((option) => option.recipe)}
           onInputChange={(event, newInputValue) => {
-            setSearchTerm(newInputValue);
+            setRecipeSearchTerm(newInputValue);
           }}
           ListboxProps={{
             component: 'div',
@@ -696,20 +833,16 @@ export default function Home() {
           renderInput={(params) => (
             <TextField
               {...params}
-              // label="S"
               variant="outlined"
-              onFocus={() => setIsFocused(true)} // Set isFocused to true on focus
-              onBlur={() => setIsFocused(false)} // Set isFocused to false on blur
-              sx={{ 
-                position: 'absolute', 
+              onFocus={() => setIsFocusedRecipe(true)} // Set isFocused to true on focus
+              onBlur={() => setIsFocusedRecipe(false)} // Set isFocused to false on blur
+              sx={{
+                position: 'absolute',
                 right: "2%",
-                // top: '50%', 
-                transform: 'translateY(-50%)',
-                width: isFocused ? '35%' : `${Math.max(searchTerm.length, 0) + 5}ch`, // Dynamically adjust width based on input length
-                // maxWidth: "35%",
-                // height: "50px",
+                paddingY: 1,
+                transform: 'translateY(0%)',
+                width: isFocusedRecipe ? '25%' : `${Math.max(recipeSearchTerm.length, 0) + 5}ch`, // Dynamically adjust width based on input length
                 transition: 'width 0.3s', // Smooth transition for width change
-                
                 '& .MuiOutlinedInput-root': {
                   '& fieldset': {
                     borderColor: 'white',
@@ -733,31 +866,15 @@ export default function Home() {
                 ),
               }}
               InputLabelProps={{
-                style: { color: 'black', width: '100%', textAlign: 'center', right: '1%'},
+                style: { color: 'black', width: '100%', textAlign: 'center', right: '1%' },
               }}
             />
           )}
         />
-      </Box>
-
-      <Divider></Divider>
-      
-      <Image 
-        src="/banner.png" // Fallback image if no image is provided
-        alt="banner"
-        layout="responsive"
-        width={800} // Set width as needed
-        height={200} // Set height as needed, maintaining aspect ratio
-      />
-
-      {/* recipes */}
-      <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'space-between'} padding = {2}>
-      <Typography variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>Recipes</Typography>
-      
       </Stack>
       <Divider></Divider>
       <Stack paddingX = {2} flexDirection= {'row'} alignItems = {'flex-start'} style={{overflow: 'scroll' }}>
-        {recipes.map(({ recipe, ingredients, instructions, image }, index) => (
+        {filteredRecipes.map(({ recipe, ingredients, instructions, image }, index) => (
           // <Grid item xs={12} sm={6} md={4} lg={4} key={name}>
           <Button 
           key={index} 
@@ -829,7 +946,70 @@ export default function Home() {
       {/* <Box height = {25}> </Box> */}
 
       {/* in your pantry */}
+      <Stack flexDirection={'row'}>
       <Typography padding = {2} variant={'h4'} color = {'#3C3C3C'} fontWeight={'bold'}>In your Pantry</Typography>
+      {/* search bar */}
+      <Autocomplete
+          freeSolo
+          disableClearable
+          options={pantry.map((option) => option.name)}
+          onInputChange={(event, newInputValue) => {
+            setSearchTerm(newInputValue);
+          }}
+          ListboxProps={{
+            component: 'div',
+            sx: {
+              backgroundColor: 'white', // Backdrop color
+              color: 'black', // Text color
+            }
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              // label="S"
+              variant="outlined"
+              onFocus={() => setIsFocused(true)} // Set isFocused to true on focus
+              onBlur={() => setIsFocused(false)} // Set isFocused to false on blur
+              sx={{ 
+                position: 'absolute', 
+                right: "2%",
+                // top: '50%', 
+                paddingY: 1,
+                transform: 'translateY(0%)',
+                width: isFocused ? '25%' : `${Math.max(searchTerm.length, 0) + 5}ch`, // Dynamically adjust width based on input length
+                // maxWidth: "35%",
+                // height: "50px",
+                transition: 'width 0.3s', // Smooth transition for width change
+                
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: 'white',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: 'black',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: 'black',
+                  },
+                },
+                '& .MuiInputBase-input': {
+                  color: 'black',
+                },
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon style={{ color: 'black' }} />
+                  </InputAdornment>
+                ),
+              }}
+              InputLabelProps={{
+                style: { color: 'black', width: '100%', textAlign: 'center', right: '1%'},
+              }}
+            />
+          )}
+        />
+        </Stack>
       <Divider></Divider>
       <Box height = {25}> </Box>
       <Grid container spacing={2} paddingX={1} style={{ height: '50%', overflow: 'scroll' }}>
