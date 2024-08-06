@@ -42,6 +42,70 @@ export default function Home() {
   const [image, setImage] = useState(null);
   const cameraRef = useRef(null);
   const [numberOfCameras, setNumberOfCameras] = useState(0);
+  // switch camera
+  const [cameraFacingMode, setCameraFacingMode] = useState('user'); // 'user' for front, 'environment' for back
+  const [cameraStream, setCameraStream] = useState(null);
+
+  const switchCamera = async () => {
+    try {
+      // Stop the current video stream
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+
+      // Toggle the camera facing mode
+      const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+      setCameraFacingMode(newFacingMode);
+
+      // Get a new video stream with the updated facing mode
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacingMode }
+      });
+
+      // Set the new video stream to the camera component
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+        cameraRef.current.start(newStream);
+      }
+
+      // Update the state with the new stream
+      setCameraStream(newStream);
+    } catch (error) {
+      console.error('Error switching camera:', error);
+    }
+  };
+
+  useEffect(() => {
+    const initializeCamera = async () => {
+      try {
+        const initialStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacingMode }
+        });
+        setCameraStream(initialStream);
+      } catch (error) {
+        console.error('Error initializing camera:', error);
+      }
+    };
+
+    if (cameraOpen) {
+      // Initialize the camera stream when the modal is opened
+      initializeCamera();
+    } else {
+      // Stop the camera stream when the modal is closed
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null); // Clear the camera stream state
+      }
+    }
+
+    return () => {
+      // Clean up when the component is unmounted or modal is closed
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null); // Clear the camera stream state
+      }
+    };
+  }, [cameraOpen]);
   
   const openai = new OpenAI({
     apiKey: openaiApiKey,
@@ -567,11 +631,7 @@ export default function Home() {
             </Button>
             <Button
               hidden={numberOfCameras <= 1}
-              onClick={() => {
-                if (cameraRef.current) {
-                  const result = cameraRef.current.switchCamera();
-                }
-              }}
+              onClick={switchCamera}
               sx={{
                 color: 'black',
                 borderColor: 'white',
