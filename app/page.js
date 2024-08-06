@@ -353,10 +353,16 @@ export default function Home() {
   }, []);
 
   // toggle dark mode
-  const [darkMode, setDarkMode] = useState(false);
+  // Detect user's preferred color scheme
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
-  const theme = darkMode ? darkTheme : lightTheme;
+  const [darkMode, setDarkMode] = useState(prefersDarkMode);
 
+  // Update dark mode state when the user's preference changes
+  useEffect(() => {
+    setDarkMode(prefersDarkMode);
+  }, [prefersDarkMode]);
+
+  const theme = darkMode ? darkTheme : lightTheme;
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -789,16 +795,16 @@ export default function Home() {
             </Button>
             {/* title */}
             <Box display = "flex" flexDirection={"row"} alignItems={"center"}>
+              {/* <IconButton 
+                  sx={{ ml: 1 }} 
+                  onClick={() => setDarkMode(!darkMode)} 
+                  color="inherit"
+                >
+                  {darkMode ? <Brightness7 /> : <Brightness4 />}
+                </IconButton> */}
               <Typography variant="h6" color="text.primary" textAlign="center">
                 myPantry
               </Typography>
-              <IconButton 
-                sx={{ ml: 1 }} 
-                onClick={() => setDarkMode(!darkMode)} 
-                color="inherit"
-              >
-                {darkMode ? <Brightness7 /> : <Brightness4 />}
-              </IconButton>
             </Box>
             {/* sign in */}
             <Box>
