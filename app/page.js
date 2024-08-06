@@ -48,32 +48,37 @@ export default function Home() {
 
   const switchCamera = async () => {
     try {
+      console.log('Switching camera...');
       // Stop the current video stream
       if (cameraStream) {
+        console.log('Stopping current camera stream...');
         cameraStream.getTracks().forEach(track => track.stop());
       }
-
+  
       // Toggle the camera facing mode
       const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
       setCameraFacingMode(newFacingMode);
-
+  
       // Get a new video stream with the updated facing mode
+      console.log(`Getting new video stream with facing mode: ${newFacingMode}`);
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: newFacingMode }
       });
-
+  
       // Set the new video stream to the camera component
       if (cameraRef.current) {
+        console.log('Setting new stream to the camera component...');
         cameraRef.current.stop();
         cameraRef.current.start(newStream);
       }
-
+  
       // Update the state with the new stream
       setCameraStream(newStream);
     } catch (error) {
       console.error('Error switching camera:', error);
     }
   };
+  
 
   useEffect(() => {
     const initializeCamera = async () => {
