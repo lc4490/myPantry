@@ -421,21 +421,69 @@ export default function Home() {
               </Box>
             )}
             {!image && (
-              <Button 
-                variant="outlined"
-                onClick={() => setCameraOpen(true)}
-                sx={{
-                  color: 'text.primary',
-                  borderColor: 'text.primary',
-                  '&:hover': {
-                    backgroundColor: 'background.default',
+              <>
+                <Button 
+                  variant="outlined"
+                  onClick={() => setCameraOpen(true)}
+                  sx={{
                     color: 'text.primary',
                     borderColor: 'text.primary',
-                  },
-                }}
-              >
-                Open Camera
-              </Button>
+                    '&:hover': {
+                      backgroundColor: 'background.default',
+                      color: 'text.primary',
+                      borderColor: 'text.primary',
+                    },
+                  }}
+                >
+                  Open Camera
+                </Button>
+                {/* upload photo */}
+                <Button 
+                  variant="outlined"
+                  component="label"
+                  sx={{
+                    color: 'text.primary',
+                    borderColor: 'text.primary',
+                    '&:hover': {
+                      backgroundColor: 'background.default',
+                      color: 'text.primary',
+                      borderColor: 'text.primary',
+                    },
+                  }}
+                >
+                  Upload Photo
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        // Validate file type
+                        const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                        if (!validTypes.includes(file.type)) {
+                          alert('Unsupported image format. Please upload a PNG, JPEG, GIF, or WEBP file.');
+                          return;
+                        }
+
+                        // Validate file size
+                        const maxSize = 20 * 1024 * 1024; // 20 MB in bytes
+                        if (file.size > maxSize) {
+                          alert('File is too large. Please upload an image smaller than 20 MB.');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setImage(reader.result);
+                          predictItem(reader.result).then(setItemName)
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </Button>
+
+              </>
             )}
             <Divider sx={{ width: '100%', backgroundColor: 'background.default' }} />
             <Box width="100%" height="25%">
