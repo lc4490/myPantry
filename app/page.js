@@ -12,7 +12,8 @@ import SearchIcon from '@mui/icons-material/Search';
 
 // use image and camera
 import Image from 'next/image';
-import { Camera, switchCamera } from 'react-camera-pro';
+// import { Camera, switchCamera } from 'react-camera-pro';
+import Webcam from 'react-webcam';
 
 // use openai
 const openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
@@ -31,7 +32,8 @@ const lightTheme = createTheme({
     background: {
       default: '#ffffff',
       paper: '#ffffff',
-      gray: 'lightgray'
+      gray: 'lightgray',
+      banner: 'banner.png',
     },
     text: {
       primary: '#000000',
@@ -45,7 +47,8 @@ const darkTheme = createTheme({
     background: {
       default: '#121212',
       paper: '#121212',
-      gray: 'darkgray'
+      gray: 'darkgray',
+      banner: 'banner.png',
     },
     text: {
       primary: '#ffffff',
@@ -86,6 +89,16 @@ export default function Home() {
   const [image, setImage] = useState(null);
   const cameraRef = useRef(null);
   const [numberOfCameras, setNumberOfCameras] = useState(0);
+  const webcamRef = useRef(null);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' is the front camera, 'environment' is the back camera
+  const captureImage = () => {
+    const imageSrc = webcamRef.current.getScreenshot();
+    setImage(imageSrc);
+    predictItem(imageSrc).then(setItemName);  // Assuming predictItem is a function you have defined
+  };
+  const switchCamera = () => {
+    setFacingMode((prevFacingMode) => (prevFacingMode === 'user' ? 'environment' : 'user'));
+  };
   
   // ai
   const openai = new OpenAI({
@@ -631,11 +644,9 @@ export default function Home() {
                   bgcolor: 'black',
                   width: 350,
                   height: 350,
-                  bgcolor: 'black',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  position: 'relative',
                   paddingY: 2,
                 }}
               >
@@ -648,8 +659,14 @@ export default function Home() {
                     alignItems: 'center',
                   }}
                 >
-                  <Camera
-                    ref={cameraRef}
+                  <Webcam
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    width={300}
+                    height={300}
+                    videoConstraints={{
+                      facingMode: facingMode,
+                    }}
                     onTakePhoto={(dataUri) => {
                       setImage(dataUri);
                       setCameraOpen(false);
@@ -660,14 +677,7 @@ export default function Home() {
               <Stack flexDirection="row" gap={2} position="relative">
                 <Button 
                   variant="outlined"
-                  onClick={() => {
-                    if (cameraRef.current) {
-                      const photo = cameraRef.current.takePhoto();
-                      setImage(photo);
-                      setCameraOpen(false);
-                      predictItem(photo).then(setItemName);
-                    }
-                  }}
+                  onClick={captureImage}
                   sx={{
                     color: 'black',
                     borderColor: 'white',
@@ -684,14 +694,7 @@ export default function Home() {
                 </Button>
                 <Button
                   hidden={numberOfCameras <= 1}
-                  onClick={() => {
-                    if (cameraRef.current) {
-                      const result = cameraRef.current.switchCamera();
-                      cameraRef.current.setFacingMode(result)
-                      console.log(numberOfCameras)
-                      console.log(result)
-                    }
-                  }}
+                  onClick={switchCamera}
                   sx={{
                     color: 'black',
                     borderColor: 'white',
@@ -899,12 +902,12 @@ export default function Home() {
           
           {/* banner image */}
           <Image 
-            src="/banner.png"
+            src= {prefersDarkMode ? "/banner_dark.png" : "/banner.png"} 
             alt="banner"
             // layout="responsive"
             width={800}
             height={200}
-            style={{ width: '100%', height: 'auto' }}
+            style={{ width: '100%', height: 'auto'}}
           />
 
           {/* recipes */}
