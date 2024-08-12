@@ -87,14 +87,13 @@ export default function Home() {
   // camera/image
   const [cameraOpen, setCameraOpen] = useState(false);
   const [image, setImage] = useState(null);
-  const cameraRef = useRef(null);
-  const [numberOfCameras, setNumberOfCameras] = useState(0);
   const webcamRef = useRef(null);
   const [facingMode, setFacingMode] = useState('user'); // 'user' is the front camera, 'environment' is the back camera
   const captureImage = () => {
     const imageSrc = webcamRef.current.getScreenshot();
     setImage(imageSrc);
     predictItem(imageSrc).then(setItemName);  // Assuming predictItem is a function you have defined
+    setCameraOpen(false);
   };
   const switchCamera = () => {
     setFacingMode((prevFacingMode) => (prevFacingMode === 'user' ? 'environment' : 'user'));
@@ -429,7 +428,7 @@ export default function Home() {
                   alt={"Captured"}
                   width={300}
                   height={300}
-                  style={{ borderRadius: '16px' }}
+                  style={{ borderRadius: '16px', objectFit: 'cover'}}
                 />
               </Box>
             )}
@@ -653,27 +652,33 @@ export default function Home() {
               >
                 <Box
                   sx={{
-                    flex: 1,
-                    width: '100%',
+                    // width: '50%', // This makes the width of the container 50% of its parent
+                    maxWidth: 350, // Optional: Limit the maximum width
+                    aspectRatio: '1/1', // Ensures the box is a square
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
+                    position: 'relative', // Allows the button to be positioned over the video feed
+                    backgroundColor: 'black', // Background color for the box
+                    borderRadius: '16px', // Optional: adds rounded corners
+                    overflow: 'hidden', // Ensures the video doesn't overflow the container
                   }}
                 >
                   <Webcam
                     ref={webcamRef}
                     screenshotFormat="image/jpeg"
-                    width={350}
-                    height={350}
                     videoConstraints={{
                       facingMode: facingMode,
+                      // aspectRatio: 4/3,
                     }}
-                    onTakePhoto={(dataUri) => {
-                      setImage(dataUri);
-                      setCameraOpen(false);
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover', // Ensures the video covers the square without distortion
                     }}
                   />
                 </Box>
+
               </Box>
               <Stack flexDirection="row" gap={2} position="relative">
                 <Button 
@@ -694,7 +699,6 @@ export default function Home() {
                   Take Photo
                 </Button>
                 <Button
-                  hidden={numberOfCameras <= 1}
                   onClick={switchCamera}
                   sx={{
                     color: 'black',
