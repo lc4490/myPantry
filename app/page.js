@@ -639,7 +639,7 @@ export default function Home() {
             <Stack display="flex" justifyContent="center" alignItems="center" flexDirection="column" sx={{ transform: 'translate(0%,25%)' }}>
               <Box
                 sx={{
-                  position: 'absolute',
+                  // position: 'absolute',
                   top: '50%',
                   bgcolor: 'black',
                   width: 350,
@@ -648,6 +648,7 @@ export default function Home() {
                   flexDirection: 'column',
                   alignItems: 'center',
                   paddingY: 2,
+                  position: 'relative'
                 }}
               >
                 <Box
@@ -662,8 +663,8 @@ export default function Home() {
                   <Webcam
                     ref={webcamRef}
                     screenshotFormat="image/jpeg"
-                    width={300}
-                    height={300}
+                    width={350}
+                    height={350}
                     videoConstraints={{
                       facingMode: facingMode,
                     }}
