@@ -20,7 +20,8 @@
     "openai": "^4.53.2",
     "react": "^18",
     "react-camera-pro": "^1.4.0",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "react-webcam": "^7.2.0"
   },
   "devDependencies": {
     "eslint": "^8",
