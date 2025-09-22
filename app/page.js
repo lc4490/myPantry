@@ -270,10 +270,15 @@ export default function Home() {
 
     // Attach images in parallel (best-effort)
     const withImages = await Promise.all(
-      parsed.map(async (r) => ({
-        ...r,
-        image: await createImage(r.recipe),
-      }))
+      parsed.map(async (r) => {
+        try {
+          const img = await createImage(r.recipe);
+          return { ...r, ...(img ? { image: img } : {}) };
+        } catch (err) {
+          console.warn("Image generation failed for", r.recipe, err);
+          return r; // just return recipe without image
+        }
+      })
     );
     setLoading(false);
     return withImages;
