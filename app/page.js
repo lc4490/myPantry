@@ -1,357 +1,105 @@
-"use client"
+"use client";
 
 // base imports
-import { Box, Stack, Typography, Button, Modal, TextField, Grid, Autocomplete, Divider } from '@mui/material'
-import { firestore, auth, provider, signInWithPopup, signOut } from '@/firebase'
-import { collection, getDocs, query, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { useEffect, useState, useRef } from 'react'
+import {
+  Box,
+  Stack,
+  Typography,
+  Button,
+  Modal,
+  TextField,
+  Grid,
+  Autocomplete,
+  Divider,
+  CircularProgress,
+} from "@mui/material";
+import {
+  firestore,
+  auth,
+  provider,
+  signInWithPopup,
+  signOut,
+} from "@/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDoc,
+} from "firebase/firestore";
+import { useEffect, useState, useRef, useMemo } from "react";
 
 // search icon
-import InputAdornment from '@mui/material/InputAdornment';
-import SearchIcon from '@mui/icons-material/Search';
+import InputAdornment from "@mui/material/InputAdornment";
+import SearchIcon from "@mui/icons-material/Search";
 
 // use image and camera
-import Image from 'next/image';
+import Image from "next/image";
 // import { Camera, switchCamera } from 'react-camera-pro';
-import Webcam from 'react-webcam';
+import Webcam from "react-webcam";
 
 // use openai
-const openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-import { OpenAI } from 'openai';
+// const openaiApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+// import { OpenAI } from "openai";
 
 // use googlesignin
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from "firebase/auth";
 
 // theme imports
-import { createTheme, ThemeProvider, useTheme, CssBaseline, useMediaQuery, IconButton } from '@mui/material';
-import { Brightness4, Brightness7 } from '@mui/icons-material';
+import {
+  createTheme,
+  ThemeProvider,
+  useTheme,
+  CssBaseline,
+  useMediaQuery,
+  IconButton,
+} from "@mui/material";
+import { Brightness4, Brightness7 } from "@mui/icons-material";
 
 const lightTheme = createTheme({
   palette: {
-    mode: 'light',
+    mode: "light",
     background: {
-      default: '#ffffff',
-      paper: '#ffffff',
-      gray: 'lightgray',
-      banner: 'banner.png',
+      default: "#ffffff",
+      paper: "#ffffff",
+      gray: "lightgray",
+      banner: "banner.png",
     },
     text: {
-      primary: '#000000',
+      primary: "#000000",
     },
   },
 });
 
 const darkTheme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: "dark",
     background: {
-      default: '#121212',
-      paper: '#121212',
-      gray: 'darkgray',
-      banner: 'banner.png',
+      default: "#121212",
+      paper: "#121212",
+      gray: "darkgray",
+      banner: "banner.png",
     },
     text: {
-      primary: '#ffffff',
+      primary: "#ffffff",
     },
   },
 });
 
 export default function Home() {
   // declare
-  const [pantry, setPantry] = useState([])
-  const [recipes, setRecipes] = useState([])
-  const [openRecipeModal, setOpenRecipeModal] = useState(false);
-  const [selectedRecipe, setSelectedRecipe] = useState({});
-  // open modal declareables
-  const [openAdd, setOpenAdd] = useState(false);
-  const handleOpenAdd = () => {
-    clearFields();
-    setOpenAdd(true)
-  };
-  const handleCloseAdd = () => {
-    clearFields();
-    setOpenAdd(false)
-  };
-  // search term for pantry and recipes
-  const [searchTerm, setSearchTerm] = useState('');
-  const [recipeSearchTerm, setRecipeSearchTerm] = useState('');
-
-  // item name/quantity
-  const [itemName, setItemName] = useState('')
-  const [quantity, setQuantity] = useState('')
-  
-  // toggle searchbar for pantry and recipes
-  const [isFocused, setIsFocused] = useState(false); 
-  const [isFocusedRecipe, setIsFocusedRecipe] = useState(false);
-
-  // camera/image
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [image, setImage] = useState(null);
-  const webcamRef = useRef(null);
-  const [facingMode, setFacingMode] = useState('user'); // 'user' is the front camera, 'environment' is the back camera
-  const captureImage = () => {
-    const imageSrc = webcamRef.current.getScreenshot();
-    setImage(imageSrc);
-    predictItem(imageSrc).then(setItemName);  // Assuming predictItem is a function you have defined
-    setCameraOpen(false);
-  };
-  const switchCamera = () => {
-    setFacingMode((prevFacingMode) => (prevFacingMode === 'user' ? 'environment' : 'user'));
-  };
-  
-  // ai
-  const openai = new OpenAI({
-    apiKey: openaiApiKey,
-    dangerouslyAllowBrowser: true
-  });
-  
-  async function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  // function to predict item label from picture (ai)
-  async function predictItem(image){
-    if(image){
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: "text",
-                text: "Identify the main object in this picture in as few words as possible",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: image,
-                  detail: "low",
-                },
-              },
-            ],
-          },
-        ],
-      })
-      let result = response.choices[0].message.content.trim();
-      result = result.replace(/\./g, '');
-      result = result.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-      return result;
-    }
-  }
-  // function to craft ai recipes from list of pantry items (ai)
-  async function craftRecipes(pantry) {
-    if (pantry.length !== 0) {
-        const ingredients = pantry.map(item => item.name).join(', ');
-
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'user',
-                    content: `Here is a list of ingredients: ${ingredients}. Classify them into foods and non-foods. Create recipes only using the foods provided. Do not use foods that are not in the ingredients list. Only print the recipes. Format it like this: Recipe: Fish & Ham Sandwich (linebreak) Ingredients: Fish, Ham (linebreak) Instructions: Layer slices of ham and cooked fish between two pieces of bread. Serve chilled or grilled.`,
-                },
-            ],
-        });
-
-        const result = response.choices[0].message.content.trim().split("\n\n");
-
-        const recipePromises = result.map(async (item) => {
-            const parts = item.split("\n");
-            let recipe = '';
-            let ingredients = '';
-            let instructions = '';
-
-            if (parts.length > 0 && parts[0].includes(": ")) {
-                recipe = parts[0].split(": ")[1]?.replace(/\*/g, '') || '';
-            }
-            if (parts.length > 1 && parts[1].includes(": ")) {
-                ingredients = parts[1].split(": ")[1]?.replace(/\*/g, '') || '';
-            }
-            if (parts.length > 2 && parts[2].includes(": ")) {
-                instructions = parts[2].split(": ")[1]?.replace(/\*/g, '') || '';
-            }
-
-            if (!recipe || !ingredients || !instructions) {
-                console.error('Failed to parse recipe details:', item);
-                return null;
-            }
-
-            const image = await createImage(recipe);
-            return { recipe, ingredients, instructions, image };
-        });
-
-        const recipes = await Promise.all(recipePromises);
-        return recipes.filter(recipe => recipe !== null);
-    }
-    return [];
-  }
-  // function to craft ai images from label (ai)
-  async function createImage(label) {
-    try {
-        const response = await openai.images.generate({
-            model: 'dall-e-2',
-            prompt: label,
-            n: 1,
-            size: "256x256",
-            response_format: 'b64_json',
-        });
-        const ret = response.data;
-        if (ret && ret.length > 0) {
-            const base64String = ret[0].b64_json;
-            return `data:image/png;base64,${base64String}`;
-        }
-        return null;
-    } catch (error) {
-        if (error.response && error.response.status === 429) {
-            console.log("Rate limit exceeded. Retrying in 10 seconds...");
-            await sleep(10000); // Wait for 10 seconds
-            return createImage(label); // Retry the request
-        } else {
-            console.error("Error creating image:", error);
-        }
-    }
-  }
-
-  // helper functions
-  // shorten string so that it doesn't overflow
-  const truncateString = (str, num) => {
-    if (str.length <= num) {
-      return str;
-    }
-    return str.slice(0, num) + '...';
-  };
-  // clear item fields after clickoff
-  const clearFields = () => {
-    setItemName('');
-    setQuantity(1);
-    setImage(null);
-  };
-  // update pantry based on firebase
-  const updatePantry = async () => {
-    if (auth.currentUser) {
-      const userUID = auth.currentUser.uid;
-      const snapshot = query(collection(firestore, `pantry_${userUID}`));
-      const docs = await getDocs(snapshot);
-      const pantryList = [];
-      docs.forEach((doc) => {
-        pantryList.push({ name: doc.id, ...doc.data() });
-      });
-      setPantry(pantryList);
-    }
-  };
-
-  useEffect(() => {
-    updatePantry()
-  }, [])
-  // helper function to craft and set recipes
-  const generateRecipes = async () => {
-    const recipes = await craftRecipes(pantry);
-    setRecipes(recipes);
-  };
-
-  useEffect(() => {
-    generateRecipes()
-  }, [pantry])
-
-  // add item function
-  const addItem = async (item, quantity, image) => {
-    if (guestMode) {
-      setPantry(prevPantry => [...prevPantry, { name: item, count: quantity, image }]);
-    } else {
-      if (!auth.currentUser) {
-        alert("You must be signed in to add items.");
-        return;
-      }
-      if (isNaN(quantity) || quantity < 0) {
-        setOpenWarningAdd(true);
-      } else if (quantity >= 1 && item != '') {
-        const userUID = auth.currentUser.uid;
-        const docRef = doc(collection(firestore, `pantry_${userUID}`), item);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const { count, image: existingImage } = docSnap.data();
-          await setDoc(docRef, { count: count + quantity, image: image || existingImage });
-        } else {
-          await setDoc(docRef, { count: quantity, image });
-        }
-        await updatePantry();
-      }
-    }
-  }
-
-  // change quantity function
-  const handleQuantityChange = async (item, quantity) => {
-    if (guestMode) {
-      setPantry(prevPantry => prevPantry.map(p => p.name === item ? { ...p, count: quantity } : p));
-    } else {
-      if (!auth.currentUser) {
-        alert("You must be signed in to change item quantities.");
-        return;
-      }
-      const userUID = auth.currentUser.uid;
-      const docRef = doc(collection(firestore, `pantry_${userUID}`), item);
-      const docSnap = await getDoc(docRef);
-      const { count, image } = docSnap.data();
-      if (0 === quantity) {
-        await deleteDoc(docRef);
-      } else {
-        await setDoc(docRef, { count: quantity, ...(image && { image }) });
-      }
-      await updatePantry();
-    }
-  };
-
-  // open add modal and open camera at the same time
-  const handleOpenAddAndOpenCamera = () => {
-    handleOpenAdd();
-    setCameraOpen(true);
-  };
-
-  // filter pantry and recipes based on search
-  const filteredPantry = pantry.filter(({ name }) => name.toLowerCase().includes(searchTerm.toLowerCase()));
-  const filteredRecipes = recipes.filter(({ recipe }) => recipe.toLowerCase().includes(recipeSearchTerm.toLowerCase()));
-  
-  // open recipe modal, lock in on specific recipe
-  const handleRecipeModal = (index) => {
-    setSelectedRecipe(index);
-    setOpenRecipeModal(true);
-  };
-
-  // sign in function for google auth
-  const handleSignIn = async () => {
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      console.log('User signed in:', user);
-      setGuestMode(false); // Disable guest mode on successful sign-in
-    } catch (error) {
-      console.error('Error signing in:', error);
-      alert('Sign in failed: ' + error.message);
-    }
-  };
-  // sign out function for google auth
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      console.log('User signed out');
-      setUser(null);
-      setGuestMode(true); // Enable guest mode on sign-out
-      setPantry([]); // Clear guest data
-      setRecipes([]); // Clear guest data
-    } catch (error) {
-      console.error('Error signing out:', error);
-      alert('Sign out failed: ' + error.message);
-    }
-  };
-
-  // declareables for user and guest mode
+  // ----------------------------------------------------------------
+  // Auth / mode
+  // ----------------------------------------------------------------
   const [user, setUser] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        setUser(u);
         setGuestMode(false);
         updatePantry();
       } else {
@@ -364,9 +112,304 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
+  const handleSignIn = async () => {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      console.log("User signed in:", result.user);
+      setGuestMode(false);
+    } catch (error) {
+      console.error("Error signing in:", error);
+      alert("Sign in failed: " + error.message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      console.log("User signed out");
+      setGuestMode(true);
+      setPantry([]);
+      setRecipes([]);
+    } catch (error) {
+      console.error("Error signing out:", error);
+      alert("Sign out failed: " + error.message);
+    }
+  };
+
+  // ----------------------------------------------------------------
+  // Pantry / recipes
+  // ----------------------------------------------------------------
+  const [pantry, setPantry] = useState([]); // [{ name, count, image? }]
+  const [recipes, setRecipes] = useState([]); // [{ recipe, ingredients, instructions, image }]
+  const [loading, setLoading] = useState(false);
+
+  const updatePantry = async () => {
+    if (!auth.currentUser) return;
+    const userUID = auth.currentUser.uid;
+    const snapshot = query(collection(firestore, `pantry_${userUID}`));
+    const docsSnap = await getDocs(snapshot);
+    const list = [];
+    docsSnap.forEach((d) => list.push({ name: d.id, ...d.data() }));
+    setPantry(list);
+  };
+
+  // ----------------------------------------------------------------
+  // UI state
+  // ----------------------------------------------------------------
+  const [openAdd, setOpenAdd] = useState(false);
+
+  const [openRecipeModal, setOpenRecipeModal] = useState(false);
+  const [selectedRecipeIndex, setSelectedRecipeIndex] = useState(null); // number|null
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [recipeSearchTerm, setRecipeSearchTerm] = useState("");
+
+  const [isFocused, setIsFocused] = useState(false);
+  const [isFocusedRecipe, setIsFocusedRecipe] = useState(false);
+
+  // Add modal inputs
+  const [itemName, setItemName] = useState("");
+  const [quantity, setQuantity] = useState(1); // number
+  const [image, setImage] = useState(null);
+
+  // Camera
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const webcamRef = useRef(null);
+  const [facingMode, setFacingMode] = useState("user"); // 'user' | 'environment'
+
+  const handleOpenAdd = () => {
+    clearFields();
+    setOpenAdd(true);
+  };
+  const handleCloseAdd = () => {
+    clearFields();
+    setOpenAdd(false);
+  };
+  const handleOpenAddAndOpenCamera = () => {
+    handleOpenAdd();
+    setCameraOpen(true);
+  };
+
+  const clearFields = () => {
+    setItemName("");
+    setQuantity(1);
+    setImage(null);
+  };
+
+  // ----------------------------------------------------------------
+  // AI (kept client-side per your current code; move to API routes later)
+  // ----------------------------------------------------------------
+  // const openai = new OpenAI({
+  //   apiKey: openaiApiKey,
+  //   dangerouslyAllowBrowser: true,
+  // });
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function predictItem(imgDataUrl) {
+    if (!imgDataUrl) return "";
+    const res = await fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imgDataUrl }),
+    });
+
+    const response = await res.json();
+    let result = response.result;
+    result = result.replace(/\./g, "");
+    result = result
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return result;
+  }
+
+  async function createImage(label) {
+    const res = await fetch("/api/createImage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+    const data = await res.json();
+    return data?.dataUrl || null;
+  }
+
+  async function craftRecipes(pantryList) {
+    if (!pantryList?.length) return [];
+    const ingredientsCsv = pantryList.map((i) => i.name).join(", ");
+    setLoading(true);
+    const res = await fetch("/api/makeRecipe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ingredientsCsv }),
+    });
+
+    const response = await res.json();
+    let result = response.result;
+    console.log(response);
+    console.log(result);
+
+    const blocks = (result || "").trim().split("\n\n");
+    const parsed = blocks
+      .map((block) => {
+        const lines = block.split("\n");
+        const rx = (label) => {
+          const row = lines.find((l) => l.toLowerCase().startsWith(label));
+          return row
+            ? row.split(": ").slice(1).join(": ").replace(/\*/g, "").trim()
+            : "";
+        };
+        const recipe = rx("recipe");
+        const ingredients = rx("ingredients");
+        const instructions = rx("instructions");
+        if (!recipe || !ingredients || !instructions) return null;
+        return { recipe, ingredients, instructions };
+      })
+      .filter(Boolean);
+
+    // Attach images in parallel (best-effort)
+    const withImages = await Promise.all(
+      parsed.map(async (r) => ({
+        ...r,
+        image: await createImage(r.recipe),
+      }))
+    );
+    setLoading(false);
+    return withImages;
+  }
+
+  // ----------------------------------------------------------------
+  // Camera helpers
+  // ----------------------------------------------------------------
+  const captureImage = () => {
+    const shot = webcamRef.current?.getScreenshot?.();
+    if (!shot) return;
+    setImage(shot);
+    predictItem(shot).then(setItemName);
+    setCameraOpen(false);
+  };
+
+  const switchCamera = () => {
+    setFacingMode((m) => (m === "user" ? "environment" : "user"));
+  };
+
+  // ----------------------------------------------------------------
+  // Pantry mutations
+  // ----------------------------------------------------------------
+  const addItem = async (item, qty, img) => {
+    const n = Number(qty);
+    if (!item || !Number.isFinite(n) || n <= 0) return;
+
+    if (guestMode || !auth.currentUser) {
+      setPantry((prev) => {
+        const existing = prev.find(
+          (p) => p.name.toLowerCase() === item.toLowerCase()
+        );
+        if (existing) {
+          return prev.map((p) =>
+            p.name.toLowerCase() === item.toLowerCase()
+              ? { ...p, count: p.count + n, image: img || p.image || null }
+              : p
+          );
+        }
+        return [...prev, { name: item, count: n, image: img || null }];
+      });
+      return;
+    }
+
+    const userUID = auth.currentUser.uid;
+    const ref = doc(collection(firestore, `pantry_${userUID}`), item);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const { count = 0, image: existingImage = null } = snap.data() || {};
+      await setDoc(ref, { count: count + n, image: img || existingImage });
+    } else {
+      await setDoc(ref, { count: n, image: img || null });
+    }
+    await updatePantry();
+  };
+
+  const handleQuantityChange = async (item, qty) => {
+    const n = Math.max(0, Number(qty) || 0);
+
+    if (guestMode || !auth.currentUser) {
+      setPantry((prev) =>
+        n === 0
+          ? prev.filter((p) => p.name !== item) // remove if zero
+          : prev.map((p) => (p.name === item ? { ...p, count: n } : p))
+      );
+      return;
+    }
+
+    const userUID = auth.currentUser.uid;
+    const ref = doc(collection(firestore, `pantry_${userUID}`), item);
+    if (n === 0) {
+      await deleteDoc(ref);
+    } else {
+      const snap = await getDoc(ref);
+      const existingImage = (snap.data() || {}).image;
+      await setDoc(ref, {
+        count: n,
+        ...(existingImage ? { image: existingImage } : {}),
+      });
+    }
+    await updatePantry();
+  };
+
+  // ----------------------------------------------------------------
+  // Derived state (memoized)
+  // ----------------------------------------------------------------
+  const filteredPantry = useMemo(
+    () =>
+      pantry.filter(({ name }) =>
+        name.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [pantry, searchTerm]
+  );
+
+  const filteredRecipes = useMemo(
+    () =>
+      recipes?.filter((r) =>
+        (r.recipe || r.title || "")
+          .toLowerCase()
+          .includes(recipeSearchTerm.toLowerCase())
+      ),
+    [recipes, recipeSearchTerm]
+  );
+
+  // ----------------------------------------------------------------
+  // Effects: generate recipes whenever pantry contents change (name:count signature)
+  // ----------------------------------------------------------------
+  // useEffect(() => {
+  //   const signature = pantry
+  //     .map((p) => `${p.name}:${p.count}`)
+  //     .sort()
+  //     .join("|");
+  //   if (!signature) {
+  //     setRecipes([]);
+  //     return;
+  //   }
+  //   (async () => {
+  //     const out = await craftRecipes(pantry);
+  //     setRecipes(out);
+  //   })();
+  // }, [pantry]);
+
+  // ----------------------------------------------------------------
+  // UI helpers
+  // ----------------------------------------------------------------
+  const truncateString = (str, num) =>
+    str.length <= num ? str : str.slice(0, num) + "...";
+
+  const handleRecipeModal = (index) => {
+    setSelectedRecipeIndex(index);
+    setOpenRecipeModal(true);
+  };
+
   // toggle dark mode
   // Detect user's preferred color scheme
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  const prefersDarkMode = useMediaQuery("(prefers-color-scheme: dark)");
   const [darkMode, setDarkMode] = useState(prefersDarkMode);
 
   // Update dark mode state when the user's preference changes
@@ -378,11 +421,11 @@ export default function Home() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box 
-        width="100vw" 
+      <Box
+        width="100vw"
         height="100vh"
-        display="flex" 
-        justifyContent="center" 
+        display="flex"
+        justifyContent="center"
         alignItems="center"
         flexDirection="column"
         gap={2}
@@ -390,23 +433,20 @@ export default function Home() {
         fontFamily="sans-serif"
       >
         {/* add modal */}
-        <Modal
-          open={openAdd}
-          onClose={handleCloseAdd}
-        >
-          <Box 
+        <Modal open={openAdd} onClose={handleCloseAdd}>
+          <Box
             sx={{
-              position: 'absolute',
-              top: '10%',
-              width: '100%',
-              height: '90%',
-              bgcolor: 'background.default',
-              border: '2px solid #000',
+              position: "absolute",
+              top: "10%",
+              width: "100%",
+              height: "90%",
+              bgcolor: "background.default",
+              border: "2px solid #000",
               boxShadow: 24,
               p: 2,
               display: "flex",
-              alignItems: 'center',
-              flexDirection: 'column',
+              alignItems: "center",
+              flexDirection: "column",
               gap: 3,
               color: "text.primary",
               borderColor: "text.primary",
@@ -419,47 +459,47 @@ export default function Home() {
                 justifyContent="center"
                 width="100%"
                 sx={{
-                  borderRadius: '16px',
-                  overflow: 'hidden',
+                  borderRadius: "16px",
+                  overflow: "hidden",
                 }}
               >
-                <Image 
+                <Image
                   src={image}
                   alt={"Captured"}
                   width={300}
                   height={300}
-                  style={{ borderRadius: '16px', objectFit: 'cover'}}
+                  style={{ borderRadius: "16px", objectFit: "cover" }}
                 />
               </Box>
             )}
             {!image && (
               <>
-                <Button 
+                <Button
                   variant="outlined"
                   onClick={() => setCameraOpen(true)}
                   sx={{
-                    color: 'text.primary',
-                    borderColor: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'background.default',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    color: "text.primary",
+                    borderColor: "text.primary",
+                    "&:hover": {
+                      backgroundColor: "background.default",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
                 >
                   Open Camera
                 </Button>
                 {/* upload photo */}
-                <Button 
+                <Button
                   variant="outlined"
                   component="label"
                   sx={{
-                    color: 'text.primary',
-                    borderColor: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'background.default',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    color: "text.primary",
+                    borderColor: "text.primary",
+                    "&:hover": {
+                      backgroundColor: "background.default",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
                 >
@@ -472,157 +512,179 @@ export default function Home() {
                       const file = e.target.files[0];
                       if (file) {
                         // Validate file type
-                        const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                        const validTypes = [
+                          "image/png",
+                          "image/jpeg",
+                          "image/gif",
+                          "image/webp",
+                        ];
                         if (!validTypes.includes(file.type)) {
-                          alert('Unsupported image format. Please upload a PNG, JPEG, GIF, or WEBP file.');
+                          alert(
+                            "Unsupported image format. Please upload a PNG, JPEG, GIF, or WEBP file."
+                          );
                           return;
                         }
 
                         // Validate file size
                         const maxSize = 20 * 1024 * 1024; // 20 MB in bytes
                         if (file.size > maxSize) {
-                          alert('File is too large. Please upload an image smaller than 20 MB.');
+                          alert(
+                            "File is too large. Please upload an image smaller than 20 MB."
+                          );
                           return;
                         }
                         const reader = new FileReader();
                         reader.onloadend = () => {
                           setImage(reader.result);
-                          predictItem(reader.result).then(setItemName)
+                          predictItem(reader.result).then(setItemName);
                         };
                         reader.readAsDataURL(file);
                       }
                     }}
                   />
                 </Button>
-
               </>
             )}
-            <Divider sx={{ width: '100%', backgroundColor: 'background.default' }} />
+            <Divider
+              sx={{ width: "100%", backgroundColor: "background.default" }}
+            />
             <Box width="100%" height="25%">
-              <TextField 
-                label="" 
+              <TextField
+                label=""
                 variant="outlined"
                 fullWidth
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
                 sx={{
-                  '& .MuiOutlinedInput-root': {
-                    color: 'text.primary',
-                    fontSize: '2.5rem',
-                    fontWeight: '550',
-                    '& fieldset': {
-                      borderColor: 'background.default',
+                  "& .MuiOutlinedInput-root": {
+                    color: "text.primary",
+                    fontSize: "2.5rem",
+                    fontWeight: "550",
+                    "& fieldset": {
+                      borderColor: "background.default",
                     },
-                    '&:hover fieldset': {
-                      borderColor: 'background.default',
+                    "&:hover fieldset": {
+                      borderColor: "background.default",
                     },
-                    '&.Mui-focused fieldset': {
-                      borderColor: 'lightgray',
+                    "&.Mui-focused fieldset": {
+                      borderColor: "lightgray",
                     },
                   },
-                  '& .MuiInputLabel-root': {
-                    color: 'text.primary',
-                    fontSize: '2.5rem',
-                    fontWeight: '550',
+                  "& .MuiInputLabel-root": {
+                    color: "text.primary",
+                    fontSize: "2.5rem",
+                    fontWeight: "550",
                   },
                 }}
                 InputProps={{
                   style: {
-                    textAlign: 'center',
-                    fontSize: '1.5rem',
-                  }
+                    textAlign: "center",
+                    fontSize: "1.5rem",
+                  },
                 }}
                 InputLabelProps={{
-                  style: { 
-                    color: 'text.primary', 
-                    width: '100%',
-                    fontSize: '1.5rem',
+                  style: {
+                    color: "text.primary",
+                    width: "100%",
+                    fontSize: "1.5rem",
                   },
                 }}
               />
             </Box>
-            <Stack width="100%" direction="column" spacing={2} justifyContent="space-between">
-              <Stack width="100%" direction="row" justifyContent="end" alignItems="center">
-                <Button 
+            <Stack
+              width="100%"
+              direction="column"
+              spacing={2}
+              justifyContent="space-between"
+            >
+              <Stack
+                width="100%"
+                direction="row"
+                justifyContent="end"
+                alignItems="center"
+              >
+                <Button
                   sx={{
-                    backgroundColor: 'lightgray',
-                    color: 'black',
-                    borderColor: 'lightgray',
-                    borderRadius: '50px',
+                    backgroundColor: "lightgray",
+                    color: "black",
+                    borderColor: "lightgray",
+                    borderRadius: "50px",
                     height: "50px",
                     minWidth: "50px",
-                    '&:hover': {
-                      backgroundColor: 'darkgray',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    "&:hover": {
+                      backgroundColor: "darkgray",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
-                  onClick={() => setQuantity(prev => Math.max(0, parseInt(prev) - 1))}
+                  onClick={() =>
+                    setQuantity((prev) => Math.max(0, parseInt(prev) - 1))
+                  }
                 >
                   -
                 </Button>
-                <TextField 
-                  label="" 
+                <TextField
+                  label=""
                   variant="outlined"
                   value={parseInt(quantity)}
                   onChange={(e) => setQuantity(parseInt(e.target.value))}
                   sx={{
                     width: "50px",
-                    '& .MuiOutlinedInput-root': {
-                      color: 'text.primary',
-                      '& fieldset': {
-                        borderColor: 'background.default',
+                    "& .MuiOutlinedInput-root": {
+                      color: "text.primary",
+                      "& fieldset": {
+                        borderColor: "background.default",
                       },
-                      '&:hover fieldset': {
-                        borderColor: 'background.default',
+                      "&:hover fieldset": {
+                        borderColor: "background.default",
                       },
-                      '&.Mui-focused fieldset': {
-                        borderColor: 'lightgray',
+                      "&.Mui-focused fieldset": {
+                        borderColor: "lightgray",
                       },
                     },
-                    '& .MuiInputLabel-root': {
-                      color: 'text.primary',
+                    "& .MuiInputLabel-root": {
+                      color: "text.primary",
                     },
                   }}
                   InputLabelProps={{
-                    style: { color: 'text.primary', width: '100%' },
+                    style: { color: "text.primary", width: "100%" },
                   }}
                 />
-                <Button 
+                <Button
                   sx={{
-                    backgroundColor: 'lightgray',
-                    color: 'black',
-                    borderColor: 'lightgray',
-                    borderRadius: '50px',
+                    backgroundColor: "lightgray",
+                    color: "black",
+                    borderColor: "lightgray",
+                    borderRadius: "50px",
                     height: "50px",
                     minWidth: "50px",
-                    '&:hover': {
-                      backgroundColor: 'darkgray',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    "&:hover": {
+                      backgroundColor: "darkgray",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
-                  onClick={() => setQuantity(prev => parseInt(prev) + 1)}
+                  onClick={() => setQuantity((prev) => parseInt(prev) + 1)}
                 >
                   +
                 </Button>
               </Stack>
-              <Button 
+              <Button
                 variant="outlined"
                 onClick={() => {
-                  addItem(itemName, parseInt(quantity), image)
-                  setItemName('')
-                  setQuantity(1)
-                  handleCloseAdd()
+                  addItem(itemName, parseInt(quantity), image);
+                  setItemName("");
+                  setQuantity(1);
+                  handleCloseAdd();
                 }}
                 sx={{
-                  backgroundColor: 'text.primary',
-                  color: 'background.default',
-                  borderColor: 'text.primary',
-                  '&:hover': {
-                    backgroundColor: 'darkgray',
-                    color: 'text.primary',
-                    borderColor: 'text.primary',
+                  backgroundColor: "text.primary",
+                  color: "background.default",
+                  borderColor: "text.primary",
+                  "&:hover": {
+                    backgroundColor: "darkgray",
+                    color: "text.primary",
+                    borderColor: "text.primary",
                   },
                 }}
               >
@@ -635,33 +697,39 @@ export default function Home() {
         {/* camera modal */}
         <Modal open={cameraOpen} onClose={() => setCameraOpen(false)}>
           <Box width="100vw" height="100vh" backgroundColor="black">
-            <Stack display="flex" justifyContent="center" alignItems="center" flexDirection="column" sx={{ transform: 'translate(0%,25%)' }}>
+            <Stack
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              flexDirection="column"
+              sx={{ transform: "translate(0%,25%)" }}
+            >
               <Box
                 sx={{
                   // position: 'absolute',
-                  top: '50%',
-                  bgcolor: 'black',
+                  top: "50%",
+                  bgcolor: "black",
                   width: 350,
                   height: 350,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
                   paddingY: 2,
-                  position: 'relative'
+                  position: "relative",
                 }}
               >
                 <Box
                   sx={{
                     // width: '50%', // This makes the width of the container 50% of its parent
                     maxWidth: 350, // Optional: Limit the maximum width
-                    aspectRatio: '1/1', // Ensures the box is a square
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    position: 'relative', // Allows the button to be positioned over the video feed
-                    backgroundColor: 'black', // Background color for the box
-                    borderRadius: '16px', // Optional: adds rounded corners
-                    overflow: 'hidden', // Ensures the video doesn't overflow the container
+                    aspectRatio: "1/1", // Ensures the box is a square
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    position: "relative", // Allows the button to be positioned over the video feed
+                    backgroundColor: "black", // Background color for the box
+                    borderRadius: "16px", // Optional: adds rounded corners
+                    overflow: "hidden", // Ensures the video doesn't overflow the container
                   }}
                 >
                   <Webcam
@@ -672,26 +740,25 @@ export default function Home() {
                       // aspectRatio: 4/3,
                     }}
                     style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover', // Ensures the video covers the square without distortion
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover", // Ensures the video covers the square without distortion
                     }}
                   />
                 </Box>
-
               </Box>
               <Stack flexDirection="row" gap={2} position="relative">
-                <Button 
+                <Button
                   variant="outlined"
                   onClick={captureImage}
                   sx={{
-                    color: 'black',
-                    borderColor: 'white',
-                    backgroundColor: 'white',
-                    '&:hover': {
-                      backgroundColor: 'white',
-                      color: 'black',
-                      borderColor: 'white',
+                    color: "black",
+                    borderColor: "white",
+                    backgroundColor: "white",
+                    "&:hover": {
+                      backgroundColor: "white",
+                      color: "black",
+                      borderColor: "white",
                     },
                     marginTop: 1,
                   }}
@@ -701,32 +768,32 @@ export default function Home() {
                 <Button
                   onClick={switchCamera}
                   sx={{
-                    color: 'black',
-                    borderColor: 'white',
-                    backgroundColor: 'white',
-                    '&:hover': {
-                      backgroundColor: 'white',
-                      color: 'black',
-                      borderColor: 'white',
+                    color: "black",
+                    borderColor: "white",
+                    backgroundColor: "white",
+                    "&:hover": {
+                      backgroundColor: "white",
+                      color: "black",
+                      borderColor: "white",
                     },
                     marginTop: 1,
                   }}
                 >
                   Switch Camera
                 </Button>
-                <Button 
+                <Button
                   variant="outlined"
                   onClick={() => {
                     setCameraOpen(false);
                   }}
                   sx={{
-                    color: 'black',
-                    borderColor: 'white',
-                    backgroundColor: 'white',
-                    '&:hover': {
-                      backgroundColor: 'white',
-                      color: 'black',
-                      borderColor: 'white',
+                    color: "black",
+                    borderColor: "white",
+                    backgroundColor: "white",
+                    "&:hover": {
+                      backgroundColor: "white",
+                      color: "black",
+                      borderColor: "white",
                     },
                     marginTop: 1,
                   }}
@@ -743,21 +810,21 @@ export default function Home() {
           <Box
             overflow="auto"
             sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
               width: 400,
-              height: '90%',
-              bgcolor: 'background.default',
-              border: '2px solid #000',
+              height: "90%",
+              bgcolor: "background.default",
+              border: "2px solid #000",
               boxShadow: 24,
               p: 4,
-              display: 'flex',
-              flexDirection: 'column',
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            {selectedRecipe !== null && recipes[selectedRecipe] && (
+            {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
               <>
                 <Box
                   display="flex"
@@ -766,47 +833,50 @@ export default function Home() {
                   width="100%"
                   paddingY={2}
                 >
-                  {recipes[selectedRecipe].image && recipes[selectedRecipe].image !== null ? (
-                    <Image 
-                      src={recipes[selectedRecipe].image}
-                      alt={recipes[selectedRecipe].recipe}
+                  {recipes[selectedRecipeIndex].image &&
+                  recipes[selectedRecipeIndex].image !== null ? (
+                    <Image
+                      src={recipes[selectedRecipeIndex].image}
+                      alt={recipes[selectedRecipeIndex].recipe}
                       width={200}
                       height={200}
-                      style={{ borderRadius: '10px' }}
+                      style={{ borderRadius: "10px" }}
                     />
                   ) : (
-                    <Image 
+                    <Image
                       src="/recipe.jpg"
-                      alt={recipes[selectedRecipe].recipe}
+                      alt={recipes[selectedRecipeIndex].recipe}
                       width={200}
                       height={200}
-                      style={{ borderRadius: '10px', objectFit: 'cover' }}
+                      style={{ borderRadius: "10px", objectFit: "cover" }}
                     />
                   )}
                 </Box>
-                <Typography variant="h6" component="h2" fontWeight='600'>
-                  {recipes[selectedRecipe].recipe}
+                <Typography variant="h6" component="h2" fontWeight="600">
+                  {recipes[selectedRecipeIndex].recipe}
                 </Typography>
                 <Typography sx={{ mt: 2 }}>
-                  <strong>Ingredients:</strong> {recipes[selectedRecipe].ingredients}
+                  <strong>Ingredients:</strong>{" "}
+                  {recipes[selectedRecipeIndex].ingredients}
                 </Typography>
                 <Typography sx={{ mt: 2 }}>
-                  <strong>Instructions:</strong> {recipes[selectedRecipe].instructions}
+                  <strong>Instructions:</strong>{" "}
+                  {recipes[selectedRecipeIndex].instructions}
                 </Typography>
                 <Box sx={{ flexGrow: 1 }} />
-                <Button 
+                <Button
                   variant="outlined"
                   onClick={() => {
-                    setOpenRecipeModal(false)
+                    setOpenRecipeModal(false);
                   }}
                   sx={{
-                    backgroundColor: 'text.primary',
-                    color: 'background.default',
-                    borderColor: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'darkgray',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    backgroundColor: "text.primary",
+                    color: "background.default",
+                    borderColor: "text.primary",
+                    "&:hover": {
+                      backgroundColor: "darkgray",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
                 >
@@ -820,8 +890,8 @@ export default function Home() {
         {/* main page */}
         <Box width="100%" height="100%" bgcolor="background.default">
           {/* header including add button, title, sign in */}
-          <Box 
-            height="10%" 
+          <Box
+            height="10%"
             bgcolor="background.default"
             display="flex"
             justifyContent="space-between"
@@ -830,27 +900,27 @@ export default function Home() {
             position="relative"
           >
             {/* add button */}
-            <Button 
-              variant="outlined" 
+            <Button
+              variant="outlined"
               onClick={handleOpenAddAndOpenCamera}
               sx={{
                 height: "55px",
-                fontSize: '1rem',
-                backgroundColor: 'background.default',
-                color: 'text.primary',
-                borderColor: 'background.default',
-                borderRadius: '50px',
-                '&:hover': {
-                  backgroundColor: 'text.primary',
-                  color: 'background.default',
-                  borderColor: 'text.primary',
+                fontSize: "1rem",
+                backgroundColor: "background.default",
+                color: "text.primary",
+                borderColor: "background.default",
+                borderRadius: "50px",
+                "&:hover": {
+                  backgroundColor: "text.primary",
+                  color: "background.default",
+                  borderColor: "text.primary",
                 },
               }}
             >
               <Typography variant="h5">+</Typography>
             </Button>
             {/* title */}
-            <Box display = "flex" flexDirection={"row"} alignItems={"center"}>
+            <Box display="flex" flexDirection={"row"} alignItems={"center"}>
               {/* <IconButton 
                   sx={{ ml: 1 }} 
                   onClick={() => setDarkMode(!darkMode)} 
@@ -865,35 +935,35 @@ export default function Home() {
             {/* sign in */}
             <Box>
               {!user ? (
-                <Button 
+                <Button
                   onClick={handleSignIn}
                   sx={{
                     justifyContent: "end",
                     right: "2%",
-                    backgroundColor: 'background.default',
-                    color: 'text.primary',
-                    borderColor: 'text.primary',
-                    '&:hover': {
-                      backgroundColor: 'text.primary',
-                      color: 'background.default',
-                      borderColor: 'text.primary',
+                    backgroundColor: "background.default",
+                    color: "text.primary",
+                    borderColor: "text.primary",
+                    "&:hover": {
+                      backgroundColor: "text.primary",
+                      color: "background.default",
+                      borderColor: "text.primary",
                     },
                   }}
                 >
                   Sign In
                 </Button>
               ) : (
-                <Button 
+                <Button
                   onClick={handleSignOut}
                   sx={{
-                    backgroundColor: 'background.default',
-                    color: 'text.primary',
-                    borderColor: 'text.primary',
+                    backgroundColor: "background.default",
+                    color: "text.primary",
+                    borderColor: "text.primary",
                     borderWidth: 2,
-                    '&:hover': {
-                      backgroundColor: 'darkgray',
-                      color: 'text.primary',
-                      borderColor: 'text.primary',
+                    "&:hover": {
+                      backgroundColor: "darkgray",
+                      color: "text.primary",
+                      borderColor: "text.primary",
                     },
                   }}
                 >
@@ -904,35 +974,76 @@ export default function Home() {
           </Box>
 
           <Divider />
-          
+
           {/* banner image */}
-          <Image 
-            src= {prefersDarkMode ? "/banner_dark.png" : "/banner.png"} 
+          <Image
+            src={"/banner.png"}
             alt="banner"
             // layout="responsive"
             width={800}
             height={200}
-            style={{ width: '100%', height: 'auto'}}
+            style={{ width: "100%", height: "auto" }}
           />
 
           {/* recipes */}
           <Stack flexDirection="row">
             {/* title */}
-            <Typography padding={2} variant="h4" color="text.primary" fontWeight="bold">Recipes</Typography>
+            <Stack flexDirection="row" alignItems="center" gap={2}>
+              <Typography
+                padding={2}
+                variant="h4"
+                color="text.primary"
+                fontWeight="bold"
+              >
+                Recipes
+              </Typography>
+              {loading ? (
+                <CircularProgress />
+              ) : (
+                <Button
+                  variant="contained"
+                  disabled={loading}
+                  sx={{
+                    borderRadius: "999px", // pill shape
+                    px: 3,
+                    py: 1,
+                    fontWeight: "bold",
+                    textTransform: "none",
+                    background: "linear-gradient(90deg, #6b7280, #9ca3af)", // grey gradient
+                    boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
+                    color: "white",
+                    "&:hover": {
+                      background: "linear-gradient(90deg, #4b5563, #6b7280)",
+                      transform: "scale(1.05)",
+                    },
+                    transition: "all 0.2s ease-in-out",
+                  }}
+                  onClick={async () => {
+                    if (pantry.length > 0) {
+                      const out = await craftRecipes(pantry);
+                      setRecipes(out);
+                    }
+                  }}
+                >
+                  ✨ Generate
+                </Button>
+              )}
+            </Stack>
+
             {/* search bar */}
             <Autocomplete
               freeSolo
               disableClearable
-              options={recipes.map((option) => option.recipe)}
+              options={recipes?.map((option) => option.recipe)}
               onInputChange={(event, newInputValue) => {
                 setRecipeSearchTerm(newInputValue);
               }}
               ListboxProps={{
-                component: 'div',
+                component: "div",
                 sx: {
-                  backgroundColor: 'background.default',
-                  color: 'text.primary',
-                }
+                  backgroundColor: "background.default",
+                  color: "text.primary",
+                },
               }}
               renderInput={(params) => (
                 <TextField
@@ -941,36 +1052,43 @@ export default function Home() {
                   onFocus={() => setIsFocusedRecipe(true)}
                   onBlur={() => setIsFocusedRecipe(false)}
                   sx={{
-                    position: 'absolute',
+                    position: "absolute",
                     right: "2%",
                     paddingY: 1,
-                    transform: 'translateY(0%)',
-                    width: isFocusedRecipe ? '25%' : `${Math.max(recipeSearchTerm.length, 0) + 5}ch`,
-                    transition: 'width 0.3s',
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': {
-                        borderColor: 'background.default',
+                    transform: "translateY(0%)",
+                    width: isFocusedRecipe
+                      ? "25%"
+                      : `${Math.max(recipeSearchTerm.length, 0) + 5}ch`,
+                    transition: "width 0.3s",
+                    "& .MuiOutlinedInput-root": {
+                      "& fieldset": {
+                        borderColor: "background.default",
                       },
-                      '&:hover fieldset': {
-                        borderColor: 'text.primary',
+                      "&:hover fieldset": {
+                        borderColor: "text.primary",
                       },
-                      '&.Mui-focused fieldset': {
-                        borderColor: 'text.primary',
+                      "&.Mui-focused fieldset": {
+                        borderColor: "text.primary",
                       },
                     },
-                    '& .MuiInputBase-input': {
-                      color: 'text.primary',
+                    "& .MuiInputBase-input": {
+                      color: "text.primary",
                     },
                   }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon style={{ color: 'text.primary' }} />
+                        <SearchIcon style={{ color: "text.primary" }} />
                       </InputAdornment>
                     ),
                   }}
                   InputLabelProps={{
-                    style: { color: 'text.primary', width: '100%', textAlign: 'center', right: '1%' },
+                    style: {
+                      color: "text.primary",
+                      width: "100%",
+                      textAlign: "center",
+                      right: "1%",
+                    },
                   }}
                 />
               )}
@@ -978,75 +1096,95 @@ export default function Home() {
           </Stack>
           <Divider />
           {/* recipes stack */}
-          <Stack paddingX={2} flexDirection="row" alignItems="flex-start" style={{ overflow: 'scroll' }}>
-            {filteredRecipes.map(({ recipe, ingredients, instructions, image }, index) => (
-              <Button 
-                key={index} 
-                sx={{ color: "text.primary", marginRight: 2, flexShrink: 0 }}
-                onClick={() => handleRecipeModal(index)}
-              >
-                {/* recipe item */}
-                <Box
-                  display="flex"
-                  flexDirection="column"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  bgcolor="background.default"
-                  padding={1}
-                  sx={{
-                    width: '275px',
-                    borderRadius: '10px',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
-                    overflow: 'hidden',
-                  }}
+          <Stack
+            paddingX={2}
+            flexDirection="row"
+            alignItems="flex-start"
+            style={{ overflow: "scroll" }}
+          >
+            {filteredRecipes?.map(
+              ({ recipe, ingredients, instructions, image }, index) => (
+                <Button
+                  key={index}
+                  sx={{ color: "text.primary", marginRight: 2, flexShrink: 0 }}
+                  onClick={() => handleRecipeModal(index)}
                 >
-                  {/* recipe image */}
-                  <Stack direction="column" justifyContent="space-between" alignItems="center">
-                    
-                    {image && image !== null ? (
-                      <Image 
-                        src={image}
-                        alt={recipe}
-                        width={200}
-                        height={200}
-                        style={{ borderRadius: '10px' }}
-                      />
-                    ) : (
-                      <Image 
-                        src="/recipe.jpg"
-                        alt={recipe}
-                        width={200}
-                        height={200}
-                        style={{ borderRadius: '10px', objectFit: 'cover' }}
-                      />
-                    )}
-                  </Stack>
-                  {/* recipe name */}
-                  <Stack>
-                    <Typography
-                      variant="h5"
-                      color="text.primary"
-                      textAlign="center"
-                      fontWeight="550"
-                      style={{
-                        flexGrow: 1,
-                        textAlign: "center",
-                        overflow: 'hidden',
-                        padding: 5,
-                      }}
+                  {/* recipe item */}
+                  <Box
+                    display="flex"
+                    flexDirection="column"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    bgcolor="background.default"
+                    padding={1}
+                    sx={{
+                      width: "275px",
+                      borderRadius: "10px",
+                      boxShadow: "0 4px 8px rgba(0, 0, 0, 0.1)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {/* recipe image */}
+                    <Stack
+                      direction="column"
+                      justifyContent="space-between"
+                      alignItems="center"
                     >
-                      {truncateString(recipe.charAt(0).toUpperCase() + recipe.slice(1), 50)}
-                    </Typography>
-                  </Stack>
-                </Box>
-              </Button>
-            ))}
+                      {image && image !== null ? (
+                        <Image
+                          src={image}
+                          alt={recipe}
+                          width={200}
+                          height={200}
+                          style={{ borderRadius: "10px" }}
+                        />
+                      ) : (
+                        <Image
+                          src="/recipe.jpg"
+                          alt={recipe}
+                          width={200}
+                          height={200}
+                          style={{ borderRadius: "10px", objectFit: "cover" }}
+                        />
+                      )}
+                    </Stack>
+                    {/* recipe name */}
+                    <Stack>
+                      <Typography
+                        variant="h5"
+                        color="text.primary"
+                        textAlign="center"
+                        fontWeight="550"
+                        style={{
+                          flexGrow: 1,
+                          textAlign: "center",
+                          overflow: "hidden",
+                          padding: 5,
+                        }}
+                      >
+                        {truncateString(
+                          recipe.charAt(0).toUpperCase() + recipe.slice(1),
+                          50
+                        )}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                </Button>
+              )
+            )}
           </Stack>
 
           {/* pantry */}
           <Stack flexDirection="row">
             {/* title */}
-            <Typography padding={2} variant="h4" color="text.primary" fontWeight="bold">In your Pantry</Typography>
+            <Typography
+              padding={2}
+              variant="h4"
+              color="text.primary"
+              fontWeight="bold"
+            >
+              In your Pantry
+            </Typography>
             {/* search bar */}
             <Autocomplete
               freeSolo
@@ -1056,11 +1194,11 @@ export default function Home() {
                 setSearchTerm(newInputValue);
               }}
               ListboxProps={{
-                component: 'div',
+                component: "div",
                 sx: {
-                  backgroundColor: 'background.default',
-                  color: 'text.primary',
-                }
+                  backgroundColor: "background.default",
+                  color: "text.primary",
+                },
               }}
               renderInput={(params) => (
                 <TextField
@@ -1069,36 +1207,43 @@ export default function Home() {
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
                   sx={{
-                    position: 'absolute',
+                    position: "absolute",
                     right: "2%",
                     paddingY: 1,
-                    transform: 'translateY(0%)',
-                    width: isFocused ? '25%' : `${Math.max(searchTerm.length, 0) + 5}ch`,
-                    transition: 'width 0.3s',
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': {
-                        borderColor: 'background.default',
+                    transform: "translateY(0%)",
+                    width: isFocused
+                      ? "25%"
+                      : `${Math.max(searchTerm.length, 0) + 5}ch`,
+                    transition: "width 0.3s",
+                    "& .MuiOutlinedInput-root": {
+                      "& fieldset": {
+                        borderColor: "background.default",
                       },
-                      '&:hover fieldset': {
-                        borderColor: 'text.primary',
+                      "&:hover fieldset": {
+                        borderColor: "text.primary",
                       },
-                      '&.Mui-focused fieldset': {
-                        borderColor: 'text.primary',
+                      "&.Mui-focused fieldset": {
+                        borderColor: "text.primary",
                       },
                     },
-                    '& .MuiInputBase-input': {
-                      color: 'text.primary',
+                    "& .MuiInputBase-input": {
+                      color: "text.primary",
                     },
                   }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon style={{ color: 'text.primary' }} />
+                        <SearchIcon style={{ color: "text.primary" }} />
                       </InputAdornment>
                     ),
                   }}
                   InputLabelProps={{
-                    style: { color: 'text.primary', width: '100%', textAlign: 'center', right: '1%' },
+                    style: {
+                      color: "text.primary",
+                      width: "100%",
+                      textAlign: "center",
+                      right: "1%",
+                    },
                   }}
                 />
               )}
@@ -1107,7 +1252,15 @@ export default function Home() {
           <Divider />
           <Box height={25}></Box>
           {/* pantry stack */}
-          <Grid container spacing={2} paddingX={1} style={{ height: '50%', overflow: 'scroll' }}>
+          <Grid
+            container
+            spacing={2}
+            paddingX={1}
+            style={{
+              // height: "50%",
+              overflow: "scroll",
+            }}
+          >
             {filteredPantry.map(({ name, count, image }, index) => (
               // pantry item
               <Grid item xs={12} sm={4} key={index}>
@@ -1130,28 +1283,38 @@ export default function Home() {
                       textAlign="left"
                       style={{
                         flexGrow: 1,
-                        whiteSpace: 'nowrap',
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      {truncateString(name.charAt(0).toUpperCase() + name.slice(1), 16)}
+                      {truncateString(
+                        name.charAt(0).toUpperCase() + name.slice(1),
+                        16
+                      )}
                     </Typography>
                     {/* quantity adjuster */}
-                    <Stack width="100%" direction="row" justifyContent="start" alignItems="center">
+                    <Stack
+                      width="100%"
+                      direction="row"
+                      justifyContent="start"
+                      alignItems="center"
+                    >
                       <Button
                         sx={{
                           height: "25px",
                           minWidth: "25px",
-                          backgroundColor: 'lightgray',
-                          color: 'black',
-                          borderColor: 'lightgray',
-                          borderRadius: '50px',
-                          '&:hover': {
-                            backgroundColor: 'darkgray',
-                            color: 'text.primary',
-                            borderColor: 'text.primary',
+                          backgroundColor: "lightgray",
+                          color: "black",
+                          borderColor: "lightgray",
+                          borderRadius: "50px",
+                          "&:hover": {
+                            backgroundColor: "darkgray",
+                            color: "text.primary",
+                            borderColor: "text.primary",
                           },
                         }}
-                        onClick={() => handleQuantityChange(name, Math.max(0, count - 1))}
+                        onClick={() =>
+                          handleQuantityChange(name, Math.max(0, count - 1))
+                        }
                       >
                         -
                       </Button>
@@ -1159,50 +1322,59 @@ export default function Home() {
                         label=""
                         variant="outlined"
                         value={parseInt(count)}
-                        onChange={(e) => handleQuantityChange(name, parseInt(e.target.value) || 0)}
+                        onChange={(e) =>
+                          handleQuantityChange(
+                            name,
+                            parseInt(e.target.value) || 0
+                          )
+                        }
                         sx={{
                           width: "45px",
-                          '& .MuiOutlinedInput-root': {
-                            color: 'text.primary',
-                            '& fieldset': {
-                              borderColor: 'background.default',
+                          "& .MuiOutlinedInput-root": {
+                            color: "text.primary",
+                            "& fieldset": {
+                              borderColor: "background.default",
                             },
-                            '&:hover fieldset': {
-                              borderColor: 'background.default',
+                            "&:hover fieldset": {
+                              borderColor: "background.default",
                             },
-                            '&.Mui-focused fieldset': {
-                              borderColor: 'lightgray',
+                            "&.Mui-focused fieldset": {
+                              borderColor: "lightgray",
                             },
                           },
-                          '& .MuiInputLabel-root': {
-                            color: 'text.primary',
+                          "& .MuiInputLabel-root": {
+                            color: "text.primary",
                           },
                         }}
                         InputProps={{
                           sx: {
-                            textAlign: 'center',
-                            fontSize: '0.75rem',
+                            textAlign: "center",
+                            fontSize: "0.75rem",
                           },
                           inputProps: {
-                            style: { textAlign: 'center' },
+                            style: { textAlign: "center" },
                           },
                         }}
                         InputLabelProps={{
-                          style: { color: 'text.primary', width: '100%', textAlign: 'center' },
+                          style: {
+                            color: "text.primary",
+                            width: "100%",
+                            textAlign: "center",
+                          },
                         }}
                       />
                       <Button
                         sx={{
                           height: "25px",
                           minWidth: "25px",
-                          backgroundColor: 'lightgray',
-                          color: 'black',
-                          borderColor: 'lightgray',
-                          borderRadius: '50px',
-                          '&:hover': {
-                            backgroundColor: 'darkgray',
-                            color: 'text.primary',
-                            borderColor: 'text.primary',
+                          backgroundColor: "lightgray",
+                          color: "black",
+                          borderColor: "lightgray",
+                          borderRadius: "50px",
+                          "&:hover": {
+                            backgroundColor: "darkgray",
+                            color: "text.primary",
+                            borderColor: "text.primary",
                           },
                         }}
                         onClick={() => handleQuantityChange(name, count + 1)}
@@ -1212,14 +1384,19 @@ export default function Home() {
                     </Stack>
                   </Stack>
                   {/* pantry ingredient image */}
-                  <Stack width="100%" direction="column" justifyContent="space-between" alignItems="flex-end">
+                  <Stack
+                    width="100%"
+                    direction="column"
+                    justifyContent="space-between"
+                    alignItems="flex-end"
+                  >
                     {image ? (
                       <Image
                         src={image}
                         alt={name}
                         width={100}
                         height={100}
-                        style={{ borderRadius: '10px' }}
+                        style={{ borderRadius: "10px" }}
                       />
                     ) : (
                       <Image
@@ -1227,7 +1404,7 @@ export default function Home() {
                         alt={name}
                         width={100}
                         height={100}
-                        style={{ borderRadius: '10px', objectFit: 'cover'}}
+                        style={{ borderRadius: "10px", objectFit: "cover" }}
                       />
                     )}
                   </Stack>
