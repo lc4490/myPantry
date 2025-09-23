@@ -1495,20 +1495,26 @@ export default function Home() {
           <Divider />
           <Box height={25}></Box>
           {/* pantry stack */}
-          <Box display="flex" justifyContent={"center"}>
+          <Box display="flex" justifyContent="center">
             <Grid
               container
               spacing={2}
               paddingX={1}
-              justifyContent={{ sx: "center" }}
+              justifyContent="center" // ✅ correct prop, not sx
               style={{
-                // height: "50%",
                 overflow: "scroll",
               }}
             >
               {filteredPantry.map(({ name, count, image }, index) => (
-                // pantry item
-                <Grid item xs={12} sm={4} key={index}>
+                <Grid
+                  item
+                  xs={12} // full width on mobile
+                  sm={6} // 2 per row on tablets
+                  md={4} // 3 per row on desktops
+                  key={index}
+                  display="flex" // ✅ make item itself flexbox
+                  justifyContent="center" // ✅ ensures each card is centered
+                >
                   <Box
                     width="325px"
                     display="flex"
