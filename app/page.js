@@ -104,6 +104,7 @@ export default function Home() {
         setUser(u);
         setGuestMode(false);
         updatePantry();
+        updateRecipe();
       } else {
         setUser(null);
         setGuestMode(true);
@@ -138,6 +139,32 @@ export default function Home() {
     }
   };
 
+  // firebase
+  function userEmailKey() {
+    const email = auth.currentUser?.email || "";
+    return email.trim().toLowerCase();
+  }
+
+  function userDocRef() {
+    const key = userEmailKey();
+    if (!key) throw new Error("No signed-in user email");
+    return doc(firestore, "users", key); // users/{email}
+  }
+
+  function pantryColRef() {
+    return collection(userDocRef(), "pantry"); // users/{email}/pantry
+  }
+
+  function recipesColRef() {
+    return collection(userDocRef(), "recipes"); // users/{email}/recipes
+  }
+
+  function recipeDocId(r) {
+    return String(r.recipe || "untitled")
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+  }
+
   // ----------------------------------------------------------------
   // Pantry / recipes
   // ----------------------------------------------------------------
@@ -148,11 +175,21 @@ export default function Home() {
   const updatePantry = async () => {
     if (!auth.currentUser) return;
     const userUID = auth.currentUser.uid;
-    const snapshot = query(collection(firestore, `pantry_${userUID}`));
+    const snapshot = query(pantryColRef());
     const docsSnap = await getDocs(snapshot);
     const list = [];
     docsSnap.forEach((d) => list.push({ name: d.id, ...d.data() }));
     setPantry(list);
+  };
+
+  const updateRecipe = async () => {
+    if (!auth.currentUser) return;
+    const userUID = auth.currentUser.uid;
+    const snapshot = query(recipesColRef());
+    const docsSnap = await getDocs(snapshot);
+    const list = [];
+    docsSnap.forEach((d) => list.push({ name: d.id, ...d.data() }));
+    setRecipes(list);
   };
 
   // ----------------------------------------------------------------
@@ -207,8 +244,6 @@ export default function Home() {
   //   apiKey: openaiApiKey,
   //   dangerouslyAllowBrowser: true,
   // });
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function predictItem(imgDataUrl) {
     if (!imgDataUrl) return "";
@@ -328,7 +363,7 @@ export default function Home() {
     }
 
     const userUID = auth.currentUser.uid;
-    const ref = doc(collection(firestore, `pantry_${userUID}`), item);
+    const ref = doc(pantryColRef(), item);
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const { count = 0, image: existingImage = null } = snap.data() || {};
@@ -352,7 +387,7 @@ export default function Home() {
     }
 
     const userUID = auth.currentUser.uid;
-    const ref = doc(collection(firestore, `pantry_${userUID}`), item);
+    const ref = doc(pantryColRef(), item);
     if (n === 0) {
       await deleteDoc(ref);
     } else {
@@ -365,6 +400,61 @@ export default function Home() {
     }
     await updatePantry();
   };
+
+  // Recipe mutations
+  const addRecipes = async (recipes) => {
+    console.log("add recipes");
+    if (!auth.currentUser) return;
+    const userUID = auth.currentUser.uid;
+    const base = recipesColRef();
+
+    // Save each recipe as a document under recipes_${uid}
+    await Promise.all(
+      recipes.map((r) => {
+        // Use recipe name as doc id (lowercased, safe string)
+        const docId = (r.recipe || "untitled")
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+
+        return setDoc(doc(base, docId), {
+          recipe: r.recipe,
+          ingredients: r.ingredients,
+          instructions: r.instructions,
+          image: r.image ?? null,
+          createdAt: new Date(),
+        });
+      })
+    );
+    await updateRecipe();
+  };
+
+  const deleteRecipe = async (recipe) => {
+    const email = (auth.currentUser?.email || "").toLowerCase().trim();
+    const recipeId = recipeDocId(recipe);
+    if (!email) {
+      throw new Error("No signed-in user");
+    }
+
+    try {
+      const ref = doc(firestore, "users", email, "recipes", recipeId);
+      await deleteDoc(ref);
+      console.log(`Recipe ${recipeId} deleted successfully`);
+    } catch (err) {
+      console.error("Error deleting recipe:", err);
+      throw err;
+    }
+  };
+
+  async function saveRecipeImageToFirestore(recipeKey, dataUrl) {
+    const email = userEmailKey();
+    if (!email) return;
+    const ref = doc(firestore, "users", email, "recipes", recipeKey);
+    await setDoc(
+      ref,
+      { image: dataUrl, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+  }
 
   // ----------------------------------------------------------------
   // Derived state (memoized)
@@ -399,29 +489,45 @@ export default function Home() {
     if (missing.length === 0) return; // nothing to do
 
     (async () => {
-      // fetch images in parallel (you can throttle if needed)
+      // fetch images in parallel
       const updates = await Promise.all(
         missing.map(async (r) => {
           try {
-            const img = await createImage(r.recipe); // or r.title if that's your field
+            const img = await createImage(r.recipe); // or r.title
             return {
-              key: r.id ?? r.recipe,
+              key: recipeDocId(r),
               img: img && img.startsWith("data:image/") ? img : null,
             };
           } catch {
-            return { key: r.id ?? r.recipe, img: null };
+            return { key: recipeDocId(r), img: null };
           }
         })
       );
 
       if (cancelled) return;
 
-      // patch images into state (only where we actually got one)
+      // patch images into state
       setRecipes((prev) =>
         prev.map((r) => {
-          const key = r.id ?? r.recipe;
+          const key = recipeDocId(r);
           const u = updates.find((x) => x.key === key);
           return u && u.img ? { ...r, image: u.img } : r;
+        })
+      );
+
+      // persist any newly-fetched images to Firestore (or Storage+Firestore)
+      const toPersist = updates.filter((u) => u.img);
+      await Promise.all(
+        toPersist.map(async ({ key, img }) => {
+          try {
+            // Simple (stores base64 in Firestore):
+            await saveRecipeImageToFirestore(key, img);
+
+            // Recommended (upload to Storage, save URL in Firestore):
+            // await saveRecipeImageViaStorage(key, img);
+          } catch (e) {
+            console.warn("Failed to persist image for", key, e);
+          }
         })
       );
     })();
@@ -856,91 +962,119 @@ export default function Home() {
         </Modal>
 
         {/* recipe modal */}
+        {/* recipe modal (simplified, drop-in) */}
         <Modal open={openRecipeModal} onClose={() => setOpenRecipeModal(false)}>
           <Box
-            overflow="auto"
             sx={{
               position: "absolute",
               top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
-              width: 400,
-              height: "90%",
+              width: { xs: "90vw", sm: 520 },
+              maxHeight: "90vh",
               bgcolor: "background.default",
-              border: "2px solid #000",
+              borderRadius: 2,
               boxShadow: 24,
-              p: 4,
+              p: 2,
               display: "flex",
               flexDirection: "column",
+              gap: 2,
+              overflow: "auto",
             }}
           >
             {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
               <>
+                {/* Image banner */}
                 <Box
-                  display="flex"
-                  justifyContent="center"
-                  alignItems="center"
-                  width="100%"
-                  paddingY={2}
+                  sx={{
+                    position: "relative",
+                    width: "100%",
+                    aspectRatio: "16 / 9",
+                    bgcolor: "action.hover",
+                    borderRadius: 1,
+                    overflow: "hidden",
+                  }}
                 >
-                  {recipes[selectedRecipeIndex].image &&
-                  recipes[selectedRecipeIndex].image !== null ? (
+                  {recipes[selectedRecipeIndex].image ? (
                     <Image
                       src={recipes[selectedRecipeIndex].image}
-                      alt={recipes[selectedRecipeIndex].recipe}
-                      width={200}
-                      height={200}
-                      style={{ borderRadius: "10px" }}
+                      alt="recipe"
+                      fill
+                      style={{ objectFit: "cover" }}
+                      sizes="(max-width: 600px) 100vw, 600px"
+                      priority
                     />
                   ) : (
-                    // <Image
-                    //   src="/recipe.jpg"
-                    //   alt={recipes[selectedRecipeIndex].recipe}
-                    //   width={200}
-                    //   height={200}
-                    //   style={{ borderRadius: "10px", objectFit: "cover" }}
-                    // />
                     <Box
-                      width={200}
-                      height={200}
-                      display={"flex"}
-                      justifyContent={"center"}
-                      alignItems={"center"}
+                      sx={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                     >
                       <CircularProgress />
                     </Box>
                   )}
                 </Box>
-                <Typography variant="h6" component="h2" fontWeight="600">
+
+                {/* Title */}
+                <Typography variant="h6" fontWeight={700}>
                   {recipes[selectedRecipeIndex].recipe}
                 </Typography>
-                <Typography sx={{ mt: 2 }}>
-                  <strong>Ingredients:</strong>{" "}
-                  {recipes[selectedRecipeIndex].ingredients}
-                </Typography>
-                <Typography sx={{ mt: 2 }}>
-                  <strong>Instructions:</strong>{" "}
-                  {recipes[selectedRecipeIndex].instructions}
-                </Typography>
-                <Box sx={{ flexGrow: 1 }} />
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setOpenRecipeModal(false);
-                  }}
+
+                {/* Ingredients */}
+                {recipes[selectedRecipeIndex].ingredients && (
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                    <strong>Ingredients:</strong>{" "}
+                    {recipes[selectedRecipeIndex].ingredients}
+                  </Typography>
+                )}
+
+                {/* Instructions */}
+                {recipes[selectedRecipeIndex].instructions && (
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                    <strong>Instructions:</strong>{" "}
+                    {recipes[selectedRecipeIndex].instructions}
+                  </Typography>
+                )}
+
+                {/* Actions */}
+                <Box
                   sx={{
-                    backgroundColor: "text.primary",
-                    color: "background.default",
-                    borderColor: "text.primary",
-                    "&:hover": {
-                      backgroundColor: "darkgray",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    pt: 1,
                   }}
                 >
-                  Close
-                </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setOpenRecipeModal(false)}
+                    sx={{ borderRadius: 1.5, textTransform: "none", px: 2 }}
+                  >
+                    Close
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    color="error"
+                    sx={{
+                      borderRadius: 1.5,
+                      textTransform: "none",
+                      px: 2,
+                      fontWeight: 600,
+                    }}
+                    onClick={async () => {
+                      await deleteRecipe(recipes[selectedRecipeIndex]); // remove await if sync
+                      await updateRecipe();
+                      setOpenRecipeModal(false);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </Box>
               </>
             )}
           </Box>
@@ -1086,6 +1220,7 @@ export default function Home() {
                     if (pantry.length > 0) {
                       const out = await craftRecipes(pantry);
                       setRecipes(out);
+                      await addRecipes(out);
                     }
                   }}
                 >
@@ -1269,10 +1404,11 @@ export default function Home() {
                           padding: 5,
                         }}
                       >
-                        {truncateString(
-                          recipe.charAt(0).toUpperCase() + recipe.slice(1),
-                          50
-                        )}
+                        {recipe &&
+                          truncateString(
+                            recipe.charAt(0).toUpperCase() + recipe.slice(1),
+                            50
+                          )}
                       </Typography>
                     </Stack>
                   </Box>
@@ -1359,166 +1495,169 @@ export default function Home() {
           <Divider />
           <Box height={25}></Box>
           {/* pantry stack */}
-          <Grid
-            container
-            spacing={2}
-            paddingX={1}
-            style={{
-              // height: "50%",
-              overflow: "scroll",
-            }}
-          >
-            {filteredPantry.map(({ name, count, image }, index) => (
-              // pantry item
-              <Grid item xs={12} sm={4} key={index}>
-                <Box
-                  width="100%"
-                  display="flex"
-                  flexDirection="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  backgroundColor="background.default"
-                  padding={2.5}
-                  border="1px solid lightgray"
-                  borderRadius="10px"
-                >
-                  {/* pantry ingredient name and quantity change */}
-                  <Stack>
-                    <Typography
-                      variant="h6"
-                      color="text.primary"
-                      textAlign="left"
-                      style={{
-                        flexGrow: 1,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {truncateString(
-                        name.charAt(0).toUpperCase() + name.slice(1),
-                        16
-                      )}
-                    </Typography>
-                    {/* quantity adjuster */}
+          <Box display="flex" justifyContent={"center"}>
+            <Grid
+              container
+              spacing={2}
+              paddingX={1}
+              justifyContent={{ sx: "center" }}
+              style={{
+                // height: "50%",
+                overflow: "scroll",
+              }}
+            >
+              {filteredPantry.map(({ name, count, image }, index) => (
+                // pantry item
+                <Grid item xs={12} sm={4} key={index}>
+                  <Box
+                    width="325px"
+                    display="flex"
+                    flexDirection="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    backgroundColor="background.default"
+                    padding={2.5}
+                    border="1px solid lightgray"
+                    borderRadius="10px"
+                  >
+                    {/* pantry ingredient name and quantity change */}
+                    <Stack>
+                      <Typography
+                        variant="h6"
+                        color="text.primary"
+                        textAlign="left"
+                        style={{
+                          flexGrow: 1,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {truncateString(
+                          name.charAt(0).toUpperCase() + name.slice(1),
+                          16
+                        )}
+                      </Typography>
+                      {/* quantity adjuster */}
+                      <Stack
+                        width="100%"
+                        direction="row"
+                        justifyContent="start"
+                        alignItems="center"
+                      >
+                        <Button
+                          sx={{
+                            height: "25px",
+                            minWidth: "25px",
+                            backgroundColor: "lightgray",
+                            color: "black",
+                            borderColor: "lightgray",
+                            borderRadius: "50px",
+                            "&:hover": {
+                              backgroundColor: "darkgray",
+                              color: "text.primary",
+                              borderColor: "text.primary",
+                            },
+                          }}
+                          onClick={() =>
+                            handleQuantityChange(name, Math.max(0, count - 1))
+                          }
+                        >
+                          -
+                        </Button>
+                        <TextField
+                          label=""
+                          variant="outlined"
+                          value={parseInt(count)}
+                          onChange={(e) =>
+                            handleQuantityChange(
+                              name,
+                              parseInt(e.target.value) || 0
+                            )
+                          }
+                          sx={{
+                            width: "45px",
+                            "& .MuiOutlinedInput-root": {
+                              color: "text.primary",
+                              "& fieldset": {
+                                borderColor: "background.default",
+                              },
+                              "&:hover fieldset": {
+                                borderColor: "background.default",
+                              },
+                              "&.Mui-focused fieldset": {
+                                borderColor: "lightgray",
+                              },
+                            },
+                            "& .MuiInputLabel-root": {
+                              color: "text.primary",
+                            },
+                          }}
+                          InputProps={{
+                            sx: {
+                              textAlign: "center",
+                              fontSize: "0.75rem",
+                            },
+                            inputProps: {
+                              style: { textAlign: "center" },
+                            },
+                          }}
+                          InputLabelProps={{
+                            style: {
+                              color: "text.primary",
+                              width: "100%",
+                              textAlign: "center",
+                            },
+                          }}
+                        />
+                        <Button
+                          sx={{
+                            height: "25px",
+                            minWidth: "25px",
+                            backgroundColor: "lightgray",
+                            color: "black",
+                            borderColor: "lightgray",
+                            borderRadius: "50px",
+                            "&:hover": {
+                              backgroundColor: "darkgray",
+                              color: "text.primary",
+                              borderColor: "text.primary",
+                            },
+                          }}
+                          onClick={() => handleQuantityChange(name, count + 1)}
+                        >
+                          +
+                        </Button>
+                      </Stack>
+                    </Stack>
+                    {/* pantry ingredient image */}
                     <Stack
                       width="100%"
-                      direction="row"
-                      justifyContent="start"
-                      alignItems="center"
+                      direction="column"
+                      justifyContent="space-between"
+                      alignItems="flex-end"
                     >
-                      <Button
-                        sx={{
-                          height: "25px",
-                          minWidth: "25px",
-                          backgroundColor: "lightgray",
-                          color: "black",
-                          borderColor: "lightgray",
-                          borderRadius: "50px",
-                          "&:hover": {
-                            backgroundColor: "darkgray",
-                            color: "text.primary",
-                            borderColor: "text.primary",
-                          },
-                        }}
-                        onClick={() =>
-                          handleQuantityChange(name, Math.max(0, count - 1))
-                        }
-                      >
-                        -
-                      </Button>
-                      <TextField
-                        label=""
-                        variant="outlined"
-                        value={parseInt(count)}
-                        onChange={(e) =>
-                          handleQuantityChange(
-                            name,
-                            parseInt(e.target.value) || 0
-                          )
-                        }
-                        sx={{
-                          width: "45px",
-                          "& .MuiOutlinedInput-root": {
-                            color: "text.primary",
-                            "& fieldset": {
-                              borderColor: "background.default",
-                            },
-                            "&:hover fieldset": {
-                              borderColor: "background.default",
-                            },
-                            "&.Mui-focused fieldset": {
-                              borderColor: "lightgray",
-                            },
-                          },
-                          "& .MuiInputLabel-root": {
-                            color: "text.primary",
-                          },
-                        }}
-                        InputProps={{
-                          sx: {
-                            textAlign: "center",
-                            fontSize: "0.75rem",
-                          },
-                          inputProps: {
-                            style: { textAlign: "center" },
-                          },
-                        }}
-                        InputLabelProps={{
-                          style: {
-                            color: "text.primary",
-                            width: "100%",
-                            textAlign: "center",
-                          },
-                        }}
-                      />
-                      <Button
-                        sx={{
-                          height: "25px",
-                          minWidth: "25px",
-                          backgroundColor: "lightgray",
-                          color: "black",
-                          borderColor: "lightgray",
-                          borderRadius: "50px",
-                          "&:hover": {
-                            backgroundColor: "darkgray",
-                            color: "text.primary",
-                            borderColor: "text.primary",
-                          },
-                        }}
-                        onClick={() => handleQuantityChange(name, count + 1)}
-                      >
-                        +
-                      </Button>
+                      {image ? (
+                        <Image
+                          src={image}
+                          alt={name}
+                          width={100}
+                          height={100}
+                          style={{ borderRadius: "10px" }}
+                        />
+                      ) : (
+                        <Image
+                          src="/ingredients.jpg"
+                          alt={name}
+                          width={100}
+                          height={100}
+                          style={{ borderRadius: "10px", objectFit: "cover" }}
+                        />
+                      )}
                     </Stack>
-                  </Stack>
-                  {/* pantry ingredient image */}
-                  <Stack
-                    width="100%"
-                    direction="column"
-                    justifyContent="space-between"
-                    alignItems="flex-end"
-                  >
-                    {image ? (
-                      <Image
-                        src={image}
-                        alt={name}
-                        width={100}
-                        height={100}
-                        style={{ borderRadius: "10px" }}
-                      />
-                    ) : (
-                      <Image
-                        src="/ingredients.jpg"
-                        alt={name}
-                        width={100}
-                        height={100}
-                        style={{ borderRadius: "10px", objectFit: "cover" }}
-                      />
-                    )}
-                  </Stack>
-                </Box>
-              </Grid>
-            ))}
-          </Grid>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
         </Box>
       </Box>
     </ThemeProvider>
