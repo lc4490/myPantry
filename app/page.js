@@ -12,6 +12,8 @@ import {
   Autocomplete,
   Divider,
   CircularProgress,
+  Tooltip,
+  Zoom,
 } from "@mui/material";
 import {
   firestore,
@@ -196,6 +198,8 @@ export default function Home() {
     setImage(null);
   };
 
+  const [makeAccountMsg, setMakeAccountMsg] = useState(false);
+
   // ----------------------------------------------------------------
   // AI (kept client-side per your current code; move to API routes later)
   // ----------------------------------------------------------------
@@ -269,19 +273,19 @@ export default function Home() {
       .filter(Boolean);
 
     // Attach images in parallel (best-effort)
-    const withImages = await Promise.all(
-      parsed.map(async (r) => {
-        try {
-          const img = await createImage(r.recipe);
-          return { ...r, ...(img ? { image: img } : {}) };
-        } catch (err) {
-          console.warn("Image generation failed for", r.recipe, err);
-          return r; // just return recipe without image
-        }
-      })
-    );
+    // const withImages = await Promise.all(
+    //   parsed.map(async (r) => {
+    //     try {
+    //       const img = await createImage(r.recipe);
+    //       return { ...r, ...(img ? { image: img } : {}) };
+    //     } catch (err) {
+    //       console.warn("Image generation failed for", r.recipe, err);
+    //       return r; // just return recipe without image
+    //     }
+    //   })
+    // );
     setLoading(false);
-    return withImages;
+    return parsed;
   }
 
   // ----------------------------------------------------------------
@@ -386,6 +390,47 @@ export default function Home() {
   // ----------------------------------------------------------------
   // Effects: generate recipes whenever pantry contents change (name:count signature)
   // ----------------------------------------------------------------
+  // assumes each recipe has either a stable `id` or a unique `recipe` name
+  useEffect(() => {
+    let cancelled = false;
+
+    // find recipes missing images
+    const missing = recipes.filter((r) => !r.image);
+    if (missing.length === 0) return; // nothing to do
+
+    (async () => {
+      // fetch images in parallel (you can throttle if needed)
+      const updates = await Promise.all(
+        missing.map(async (r) => {
+          try {
+            const img = await createImage(r.recipe); // or r.title if that's your field
+            return {
+              key: r.id ?? r.recipe,
+              img: img && img.startsWith("data:image/") ? img : null,
+            };
+          } catch {
+            return { key: r.id ?? r.recipe, img: null };
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      // patch images into state (only where we actually got one)
+      setRecipes((prev) =>
+        prev.map((r) => {
+          const key = r.id ?? r.recipe;
+          const u = updates.find((x) => x.key === key);
+          return u && u.img ? { ...r, image: u.img } : r;
+        })
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recipes, setRecipes, createImage]);
+
   // useEffect(() => {
   //   const signature = pantry
   //     .map((p) => `${p.name}:${p.count}`)
@@ -848,13 +893,22 @@ export default function Home() {
                       style={{ borderRadius: "10px" }}
                     />
                   ) : (
-                    <Image
-                      src="/recipe.jpg"
-                      alt={recipes[selectedRecipeIndex].recipe}
+                    // <Image
+                    //   src="/recipe.jpg"
+                    //   alt={recipes[selectedRecipeIndex].recipe}
+                    //   width={200}
+                    //   height={200}
+                    //   style={{ borderRadius: "10px", objectFit: "cover" }}
+                    // />
+                    <Box
                       width={200}
                       height={200}
-                      style={{ borderRadius: "10px", objectFit: "cover" }}
-                    />
+                      display={"flex"}
+                      justifyContent={"center"}
+                      alignItems={"center"}
+                    >
+                      <CircularProgress />
+                    </Box>
                   )}
                 </Box>
                 <Typography variant="h6" component="h2" fontWeight="600">
@@ -1009,12 +1063,12 @@ export default function Home() {
                   variant="contained"
                   disabled={loading}
                   sx={{
-                    borderRadius: "999px", // pill shape
+                    borderRadius: "999px",
                     px: 3,
                     py: 1,
                     fontWeight: "bold",
                     textTransform: "none",
-                    background: "linear-gradient(90deg, #6b7280, #9ca3af)", // grey gradient
+                    background: "linear-gradient(90deg, #6b7280, #9ca3af)",
                     boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
                     color: "white",
                     "&:hover": {
@@ -1024,13 +1078,52 @@ export default function Home() {
                     transition: "all 0.2s ease-in-out",
                   }}
                   onClick={async () => {
+                    if (!user) {
+                      setMakeAccountMsg(true);
+                      setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
+                      return;
+                    }
                     if (pantry.length > 0) {
                       const out = await craftRecipes(pantry);
                       setRecipes(out);
                     }
                   }}
                 >
-                  ✨ Generate
+                  <Tooltip
+                    open={makeAccountMsg}
+                    title={
+                      <Box sx={{ p: 1 }}>
+                        <Typography variant="body1" fontWeight="600">
+                          Sign in for 1 free recipe daily
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          Upgrade to <strong>Premium</strong> for unlimited ✨
+                        </Typography>
+                      </Box>
+                    }
+                    placement="top"
+                    arrow
+                    TransitionComponent={Zoom} // gives a zoom-in animation
+                    slotProps={{
+                      popper: {
+                        sx: {
+                          "& .MuiTooltip-tooltip": {
+                            bgcolor: "white",
+                            color: "black",
+                            border: "1px solid lightgray",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            borderRadius: "12px",
+                            maxWidth: 250,
+                          },
+                          "& .MuiTooltip-arrow": {
+                            color: "white",
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    <span>✨ Generate</span>
+                  </Tooltip>
                 </Button>
               )}
             </Stack>
@@ -1144,13 +1237,22 @@ export default function Home() {
                           style={{ borderRadius: "10px" }}
                         />
                       ) : (
-                        <Image
-                          src="/recipe.jpg"
-                          alt={recipe}
+                        <Box
                           width={200}
                           height={200}
-                          style={{ borderRadius: "10px", objectFit: "cover" }}
-                        />
+                          display={"flex"}
+                          justifyContent={"center"}
+                          alignItems={"center"}
+                        >
+                          <CircularProgress />
+                        </Box>
+                        // <Image
+                        //   src="/recipe.jpg"
+                        //   alt={recipe}
+                        //   width={200}
+                        //   height={200}
+                        //   style={{ borderRadius: "10px", objectFit: "cover" }}
+                        // />
                       )}
                     </Stack>
                     {/* recipe name */}
