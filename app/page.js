@@ -1204,8 +1204,8 @@ export default function Home() {
                   disabled={loading}
                   sx={{
                     borderRadius: "999px",
-                    px: 3,
-                    py: 1,
+                    px: { sx: 0, md: 3 },
+                    py: { sx: 0, md: 1 },
                     fontWeight: "bold",
                     textTransform: "none",
                     background: "linear-gradient(90deg, #6b7280, #9ca3af)",
