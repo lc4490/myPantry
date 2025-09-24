@@ -1181,9 +1181,15 @@ export default function Home() {
           {/* recipes */}
           <Stack flexDirection="row">
             {/* title */}
-            <Stack flexDirection="row" alignItems="center" gap={2}>
+            <Stack
+              flexDirection="row"
+              alignItems="center"
+              gap={{ sx: 1.5, md: 2 }}
+            >
               <Typography
-                padding={2}
+                paddingY={2}
+                marginLeft={2}
+                marginRight={{ sx: 1, md: 2 }}
                 variant="h4"
                 color="text.primary"
                 fontWeight="bold"
@@ -1229,7 +1235,7 @@ export default function Home() {
                     title={
                       <Box sx={{ p: 1 }}>
                         <Typography variant="body1" fontWeight="600">
-                          Sign in for 1 free recipe daily
+                          Sign in for 1 free recipe generation daily
                         </Typography>
                         <Typography variant="body2" sx={{ mt: 0.5 }}>
                           Upgrade to <strong>Premium</strong> for unlimited ✨
