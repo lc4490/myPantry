@@ -2,41 +2,46 @@
 
 // base imports
 import {
-  Box,
-  Stack,
-  Typography,
-  Button,
-  Modal,
-  TextField,
-  Grid,
-  Autocomplete,
-  Divider,
-  CircularProgress,
-  Tooltip,
-  Zoom,
-} from "@mui/material";
-import {
-  firestore,
   auth,
+  firestore,
   provider,
   signInWithPopup,
   signOut,
 } from "@/firebase";
 import {
+  Autocomplete,
+  Box,
+  Button,
+  CircularProgress,
+  Divider,
+  Grid,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Modal,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+  Zoom,
+} from "@mui/material";
+import {
   collection,
+  deleteDoc,
+  doc,
+  getDoc,
   getDocs,
   query,
-  doc,
   setDoc,
-  deleteDoc,
-  getDoc,
   updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // search icon
-import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
+import InputAdornment from "@mui/material/InputAdornment";
+import CancelIcon from "@mui/icons-material/Cancel";
 
 // use image and camera
 import Image from "next/image";
@@ -53,13 +58,11 @@ import { onAuthStateChanged } from "firebase/auth";
 // theme imports
 import {
   createTheme,
-  ThemeProvider,
-  useTheme,
   CssBaseline,
+  ThemeProvider,
   useMediaQuery,
-  IconButton,
 } from "@mui/material";
-import { Brightness4, Brightness7 } from "@mui/icons-material";
+import { startCheckout } from "@/lib/upgrade";
 
 const lightTheme = createTheme({
   palette: {
@@ -102,7 +105,7 @@ export default function Home() {
     isPremium: false,
     freeGenerationsLeft: 0,
   });
-  const [bigLoading, setBigloading] = useState(false);
+  const [bigLoading, setBigloading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -199,13 +202,53 @@ export default function Home() {
       setUserMeta({ isPremium: false, freeGenerationsLeft: 0 });
       return;
     }
+
+    // Read your existing doc (for the counter)
     const snap = await getDoc(doc(firestore, "users", email));
     const d = snap.data() || {};
+    let premium = false;
+
+    // Ask Stripe (server) for the truth
+    try {
+      const res = await fetch("/api/stripe/is-premium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok) premium = !!data.isPremium;
+    } catch (e) {
+      console.warn("[refreshUserMeta] premium check failed:", e?.message);
+    }
+
+    // Optional: mirror into Firestore for convenience (client-side write)
+    // (Only if your security rules allow users to update their own doc.)
+    try {
+      if (premium !== !!d.isPremium) {
+        await setDoc(
+          doc(firestore, "users", email),
+          { isPremium: premium },
+          { merge: true }
+        );
+      }
+    } catch (e) {
+      console.warn("[refreshUserMeta] mirror to Firestore failed:", e?.message);
+    }
+
     setUserMeta({
-      isPremium: !!d.isPremium,
+      isPremium: premium,
       freeGenerationsLeft: Number(d.freeGenerationsLeft ?? 0),
     });
   }
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("upgrade") === "success") {
+        refreshUserMeta();
+      }
+    } catch {}
+  }, []);
 
   // ----------------------------------------------------------------
   // Pantry / recipes
@@ -610,6 +653,78 @@ export default function Home() {
     };
   }, [recipes, createImage]);
 
+  // Premium mode
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+
+  const handleClick = async (e) => {
+    if (userMeta?.isPremium) {
+      setAnchorEl(e.currentTarget); // already premium -> open menu
+      return;
+    }
+
+    // Not premium -> start upgrade flow
+    if (!auth.currentUser?.email) {
+      // your UI already shows a tooltip—this is a simple fallback
+      alert("Please sign in to upgrade.");
+      return;
+    }
+
+    try {
+      setUpgradeLoading(true);
+      const email = auth.currentUser.email.toLowerCase();
+      await startCheckout(email);
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Upgrade failed");
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+
+  const handleClose = () => setAnchorEl(null);
+
+  const [cancelLoading, setCancelLoading] = useState(false);
+
+  const handleCancel = async () => {
+    if (cancelLoading) return;
+
+    const email = auth.currentUser?.email?.toLowerCase();
+    if (!email) {
+      alert("Please sign in to manage your membership.");
+      return;
+    }
+    if (!userMeta?.isPremium) {
+      alert("No active Premium membership found on your account.");
+      return;
+    }
+
+    // (Optional) re-check server truth to avoid stale UI
+    try {
+      const res = await fetch("/api/stripe/is-premium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (res.ok) {
+        const { isPremium } = await res.json();
+        if (!isPremium) {
+          alert("Your membership is already inactive.");
+          return;
+        }
+      }
+    } catch {}
+
+    try {
+      setCancelLoading(true);
+      handleClose?.(); // close any menu/dialog
+      window.location.href = process.env.NEXT_PUBLIC_STRIPE_PORTAL_LOGIN_URL; // redirect to Stripe portal login
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
   // ----------------------------------------------------------------
   // UI helpers
   // ----------------------------------------------------------------
@@ -637,7 +752,7 @@ export default function Home() {
       <Box
         width="100vw"
         height="100vh"
-        bgcolor="background.default"
+        bgcolor="#000"
         display="flex"
         justifyContent={"center"}
         alignItems={"center"}
@@ -1208,7 +1323,12 @@ export default function Home() {
               <Typography variant="h5">+</Typography>
             </Button>
             {/* title */}
-            <Box display="flex" flexDirection={"row"} alignItems={"center"}>
+            <Box
+              display="flex"
+              flexDirection={"row"}
+              alignItems={"center"}
+              gap={0.5}
+            >
               {/* <IconButton 
                   sx={{ ml: 1 }} 
                   onClick={() => setDarkMode(!darkMode)} 
@@ -1219,6 +1339,58 @@ export default function Home() {
               <Typography variant="h6" color="text.primary" textAlign="center">
                 myPantry
               </Typography>
+              <Button
+                variant="contained"
+                disabled={upgradeLoading}
+                onClick={handleClick}
+                sx={{
+                  minWidth: "40px",
+                  height: "30px",
+                  borderRadius: "8px",
+                  px: 1,
+                  py: 1,
+                  bgcolor: "text.primary",
+                  color: "background.default",
+                  fontWeight: 600,
+                  "&:hover": {
+                    bgcolor: "text.secondary",
+                  },
+                }}
+              >
+                {userMeta.isPremium ? "Pro" : "Upgrade"}
+              </Button>
+
+              {userMeta.isPremium && (
+                <Menu
+                  anchorEl={anchorEl}
+                  open={open}
+                  onClose={handleClose}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  transformOrigin={{ vertical: "top", horizontal: "right" }}
+                >
+                  <MenuItem
+                    onClick={handleCancel}
+                    disabled={
+                      cancelLoading ||
+                      !auth.currentUser?.email ||
+                      !userMeta?.isPremium
+                    }
+                    sx={{
+                      color: "error.main",
+                      fontWeight: 600,
+                      "&:hover": {
+                        bgcolor: "error.light",
+                        color: "white",
+                      },
+                    }}
+                  >
+                    <ListItemIcon>
+                      <CancelIcon fontSize="small" sx={{ color: "inherit" }} />
+                    </ListItemIcon>
+                    <ListItemText primary="Cancel Subscription" />
+                  </MenuItem>
+                </Menu>
+              )}
             </Box>
             {/* sign in */}
             <Box>
