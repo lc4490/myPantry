@@ -946,6 +946,10 @@ export default function Home() {
                   position: "relative",
                 }}
               >
+                <Typography>
+                  Use the camera to identify items in your pantry, or click exit
+                  to manually enter them in.
+                </Typography>
                 <Box
                   sx={{
                     // width: '50%', // This makes the width of the container 50% of its parent
