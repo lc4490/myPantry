@@ -789,10 +789,10 @@ export default function Home() {
                     fontSize: "2.5rem",
                     fontWeight: "550",
                     "& fieldset": {
-                      borderColor: "background.default",
+                      borderColor: "lightgray",
                     },
                     "&:hover fieldset": {
-                      borderColor: "background.default",
+                      borderColor: "lightgray",
                     },
                     "&.Mui-focused fieldset": {
                       borderColor: "lightgray",
