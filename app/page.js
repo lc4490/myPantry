@@ -30,6 +30,7 @@ import {
   setDoc,
   deleteDoc,
   getDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState, useRef, useMemo } from "react";
 
@@ -97,20 +98,29 @@ export default function Home() {
   // ----------------------------------------------------------------
   const [user, setUser] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
+  const [userMeta, setUserMeta] = useState({
+    isPremium: false,
+    freeGenerationsLeft: 0,
+  });
+  const [bigLoading, setBigloading] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setBigloading(true);
       if (u) {
         setUser(u);
         setGuestMode(false);
         updatePantry();
         updateRecipe();
+        await refreshUserMeta();
       } else {
         setUser(null);
         setGuestMode(true);
         setPantry([]);
         setRecipes([]);
+        setUserMeta({ isPremium: false, freeGenerationsLeft: 0 });
       }
+      setBigloading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -119,6 +129,7 @@ export default function Home() {
     try {
       const result = await signInWithPopup(auth, provider);
       console.log("User signed in:", result.user);
+      await ensureUserDoc();
       setGuestMode(false);
     } catch (error) {
       console.error("Error signing in:", error);
@@ -163,6 +174,37 @@ export default function Home() {
     return String(r.recipe || "untitled")
       .toLowerCase()
       .replace(/\s+/g, "_");
+  }
+
+  const ensureUserDoc = async () => {
+    const email = (auth.currentUser?.email || "").toLowerCase();
+    if (!email) return;
+
+    const ref = doc(firestore, "users", email);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      // create with starting value
+      await setDoc(ref, {
+        freeGenerationsLeft: 3,
+        isPremium: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  };
+
+  async function refreshUserMeta() {
+    const email = userEmailKey();
+    if (!email) {
+      setUserMeta({ isPremium: false, freeGenerationsLeft: 0 });
+      return;
+    }
+    const snap = await getDoc(doc(firestore, "users", email));
+    const d = snap.data() || {};
+    setUserMeta({
+      isPremium: !!d.isPremium,
+      freeGenerationsLeft: Number(d.freeGenerationsLeft ?? 0),
+    });
   }
 
   // ----------------------------------------------------------------
@@ -240,10 +282,6 @@ export default function Home() {
   // ----------------------------------------------------------------
   // AI (kept client-side per your current code; move to API routes later)
   // ----------------------------------------------------------------
-  // const openai = new OpenAI({
-  //   apiKey: openaiApiKey,
-  //   dangerouslyAllowBrowser: true,
-  // });
 
   async function predictItem(imgDataUrl) {
     if (!imgDataUrl) return "";
@@ -276,8 +314,41 @@ export default function Home() {
 
   async function craftRecipes(pantryList) {
     if (!pantryList?.length) return [];
-    const ingredientsCsv = pantryList.map((i) => i.name).join(", ");
+
+    const email = (auth.currentUser?.email || "").toLowerCase();
+    if (!email) {
+      alert("Please sign in to generate recipes.");
+      return [];
+    }
+
+    const userRef = doc(firestore, "users", email);
+    const snap = await getDoc(userRef);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      if (!data.isPremium) {
+        const left = data.freeGenerationsLeft ?? 0;
+        if (left <= 0) {
+          alert(
+            "You’ve used all 3 free generations. Upgrade to Premium for unlimited ✨"
+          );
+          return [];
+        }
+        // subtract 1
+        await updateDoc(userRef, {
+          freeGenerationsLeft: left - 1,
+        });
+        setUserMeta((prev) => ({
+          ...prev,
+          freeGenerationsLeft: Math.max(
+            0,
+            (prev.freeGenerationsLeft ?? left) - 1
+          ),
+        }));
+      }
+    }
     setLoading(true);
+    const ingredientsCsv = pantryList.map((i) => i.name).join(", ");
     const res = await fetch("/api/makeRecipe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -434,6 +505,7 @@ export default function Home() {
     if (!email) {
       throw new Error("No signed-in user");
     }
+    setLoading(true);
 
     try {
       const ref = doc(firestore, "users", email, "recipes", recipeId);
@@ -443,6 +515,7 @@ export default function Home() {
       console.error("Error deleting recipe:", err);
       throw err;
     }
+    setLoading(false);
   };
 
   async function saveRecipeImageToFirestore(recipeKey, dataUrl) {
@@ -535,22 +608,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [recipes, setRecipes, createImage]);
-
-  // useEffect(() => {
-  //   const signature = pantry
-  //     .map((p) => `${p.name}:${p.count}`)
-  //     .sort()
-  //     .join("|");
-  //   if (!signature) {
-  //     setRecipes([]);
-  //     return;
-  //   }
-  //   (async () => {
-  //     const out = await craftRecipes(pantry);
-  //     setRecipes(out);
-  //   })();
-  // }, [pantry]);
+  }, [recipes, createImage]);
 
   // ----------------------------------------------------------------
   // UI helpers
@@ -574,6 +632,20 @@ export default function Home() {
   }, [prefersDarkMode]);
 
   const theme = darkMode ? darkTheme : lightTheme;
+  if (bigLoading) {
+    return (
+      <Box
+        width="100vw"
+        height="100vh"
+        bgcolor="background.default"
+        display="flex"
+        justifyContent={"center"}
+        alignItems={"center"}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -964,120 +1036,139 @@ export default function Home() {
         {/* recipe modal */}
         {/* recipe modal (simplified, drop-in) */}
         <Modal open={openRecipeModal} onClose={() => setOpenRecipeModal(false)}>
-          <Box
-            sx={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: { xs: "90vw", sm: 520 },
-              maxHeight: "90vh",
-              bgcolor: "background.default",
-              borderRadius: 2,
-              boxShadow: 24,
-              p: 2,
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              overflow: "auto",
-            }}
-          >
-            {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
-              <>
-                {/* Image banner */}
-                <Box
-                  sx={{
-                    position: "relative",
-                    width: "100%",
-                    aspectRatio: "16 / 9",
-                    bgcolor: "action.hover",
-                    borderRadius: 1,
-                    overflow: "hidden",
-                  }}
-                >
-                  {recipes[selectedRecipeIndex].image ? (
-                    <Image
-                      src={recipes[selectedRecipeIndex].image}
-                      alt="recipe"
-                      fill
-                      style={{ objectFit: "cover" }}
-                      sizes="(max-width: 600px) 100vw, 600px"
-                      priority
-                    />
-                  ) : (
-                    <Box
+          {loading ? (
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                backgroundColor: "black",
+              }}
+              width="600px"
+              height="600px"
+              display="flex"
+              justifyContent={"center"}
+              alignItems={"center"}
+            >
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: { xs: "90vw", sm: 520 },
+                maxHeight: "90vh",
+                bgcolor: "background.default",
+                borderRadius: 2,
+                boxShadow: 24,
+                p: 2,
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                overflow: "auto",
+              }}
+            >
+              {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
+                <>
+                  {/* Image banner */}
+                  <Box
+                    sx={{
+                      position: "relative",
+                      width: "100%",
+                      aspectRatio: "16 / 9",
+                      bgcolor: "action.hover",
+                      borderRadius: 1,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {recipes[selectedRecipeIndex].image ? (
+                      <Image
+                        src={recipes[selectedRecipeIndex].image}
+                        alt="recipe"
+                        fill
+                        style={{ objectFit: "cover" }}
+                        sizes="(max-width: 600px) 100vw, 600px"
+                        priority
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <CircularProgress />
+                      </Box>
+                    )}
+                  </Box>
+
+                  {/* Title */}
+                  <Typography variant="h6" fontWeight={700}>
+                    {recipes[selectedRecipeIndex].recipe}
+                  </Typography>
+
+                  {/* Ingredients */}
+                  {recipes[selectedRecipeIndex].ingredients && (
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                      <strong>Ingredients:</strong>{" "}
+                      {recipes[selectedRecipeIndex].ingredients}
+                    </Typography>
+                  )}
+
+                  {/* Instructions */}
+                  {recipes[selectedRecipeIndex].instructions && (
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                      <strong>Instructions:</strong>{" "}
+                      {recipes[selectedRecipeIndex].instructions}
+                    </Typography>
+                  )}
+
+                  {/* Actions */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 1,
+                      pt: 1,
+                    }}
+                  >
+                    <Button
+                      variant="outlined"
+                      onClick={() => setOpenRecipeModal(false)}
+                      sx={{ borderRadius: 1.5, textTransform: "none", px: 2 }}
+                    >
+                      Close
+                    </Button>
+
+                    <Button
+                      variant="contained"
+                      color="error"
                       sx={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        borderRadius: 1.5,
+                        textTransform: "none",
+                        px: 2,
+                        fontWeight: 600,
+                      }}
+                      onClick={async () => {
+                        await deleteRecipe(recipes[selectedRecipeIndex]); // remove await if sync
+                        await updateRecipe();
+                        setOpenRecipeModal(false);
                       }}
                     >
-                      <CircularProgress />
-                    </Box>
-                  )}
-                </Box>
-
-                {/* Title */}
-                <Typography variant="h6" fontWeight={700}>
-                  {recipes[selectedRecipeIndex].recipe}
-                </Typography>
-
-                {/* Ingredients */}
-                {recipes[selectedRecipeIndex].ingredients && (
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                    <strong>Ingredients:</strong>{" "}
-                    {recipes[selectedRecipeIndex].ingredients}
-                  </Typography>
-                )}
-
-                {/* Instructions */}
-                {recipes[selectedRecipeIndex].instructions && (
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                    <strong>Instructions:</strong>{" "}
-                    {recipes[selectedRecipeIndex].instructions}
-                  </Typography>
-                )}
-
-                {/* Actions */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 1,
-                    pt: 1,
-                  }}
-                >
-                  <Button
-                    variant="outlined"
-                    onClick={() => setOpenRecipeModal(false)}
-                    sx={{ borderRadius: 1.5, textTransform: "none", px: 2 }}
-                  >
-                    Close
-                  </Button>
-
-                  <Button
-                    variant="contained"
-                    color="error"
-                    sx={{
-                      borderRadius: 1.5,
-                      textTransform: "none",
-                      px: 2,
-                      fontWeight: 600,
-                    }}
-                    onClick={async () => {
-                      await deleteRecipe(recipes[selectedRecipeIndex]); // remove await if sync
-                      await updateRecipe();
-                      setOpenRecipeModal(false);
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </Box>
-              </>
-            )}
-          </Box>
+                      Delete
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </Box>
+          )}
         </Modal>
 
         {/* main page */}
@@ -1187,9 +1278,7 @@ export default function Home() {
               gap={{ sx: 1.5, md: 2 }}
             >
               <Typography
-                paddingY={2}
-                marginLeft={2}
-                marginRight={{ sx: 1, md: 2 }}
+                padding={2}
                 variant="h4"
                 color="text.primary"
                 fontWeight="bold"
@@ -1203,7 +1292,7 @@ export default function Home() {
                   variant="contained"
                   disabled={loading}
                   sx={{
-                    borderRadius: "999px",
+                    borderRadius: "8px",
                     px: { sx: 0, md: 3 },
                     py: { sx: 0, md: 1 },
                     fontWeight: "bold",
@@ -1234,12 +1323,12 @@ export default function Home() {
                     open={makeAccountMsg}
                     title={
                       <Box sx={{ p: 1 }}>
-                        <Typography variant="body1" fontWeight="600">
-                          Sign in for 1 free recipe generation daily
+                        <Typography variant="body1" fontWeight="500">
+                          Sign in to generate recipes
                         </Typography>
-                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                        {/* <Typography variant="body2" sx={{ mt: 0.5 }}>
                           Upgrade to <strong>Premium</strong> for unlimited ✨
-                        </Typography>
+                        </Typography> */}
                       </Box>
                     }
                     placement="top"
@@ -1263,7 +1352,9 @@ export default function Home() {
                       },
                     }}
                   >
-                    <span>✨ Generate</span>
+                    {userMeta.isPremium
+                      ? "GENERATE"
+                      : `GENERATE [${userMeta.freeGenerationsLeft}/3]`}
                   </Tooltip>
                 </Button>
               )}
@@ -1300,6 +1391,8 @@ export default function Home() {
                       : `${Math.max(recipeSearchTerm.length, 0) + 5}ch`,
                     transition: "width 0.3s",
                     "& .MuiOutlinedInput-root": {
+                      bgcolor: "background.default",
+                      color: "text.primary",
                       "& fieldset": {
                         borderColor: "background.default",
                       },
