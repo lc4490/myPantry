@@ -12,7 +12,7 @@ export async function POST(req) {
     const { ingredientsCsv } = await req.json();
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
       messages: [
         {
           role: "user",
@@ -26,7 +26,6 @@ export async function POST(req) {
             `Instructions: Layer slices of ham and cooked fish between two pieces of bread. Serve chilled or grilled.`,
         },
       ],
-      temperature: 0.4,
     });
 
     const result = (completion.choices?.[0]?.message?.content || "").trim();

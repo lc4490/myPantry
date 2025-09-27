@@ -390,7 +390,6 @@ export default function Home() {
         }));
       }
     }
-    setLoading(true);
     const ingredientsCsv = pantryList.map((i) => i.name).join(", ");
     const res = await fetch("/api/makeRecipe", {
       method: "POST",
@@ -433,7 +432,6 @@ export default function Home() {
     //     }
     //   })
     // );
-    setLoading(false);
     return parsed;
   }
 
@@ -548,7 +546,7 @@ export default function Home() {
     if (!email) {
       throw new Error("No signed-in user");
     }
-    setLoading(true);
+    setBigloading(true);
 
     try {
       const ref = doc(firestore, "users", email, "recipes", recipeId);
@@ -558,7 +556,7 @@ export default function Home() {
       console.error("Error deleting recipe:", err);
       throw err;
     }
-    setLoading(false);
+    setBigloading(false);
   };
 
   async function saveRecipeImageToFirestore(recipeKey, dataUrl) {
@@ -598,60 +596,37 @@ export default function Home() {
   // ----------------------------------------------------------------
   // assumes each recipe has either a stable `id` or a unique `recipe` name
   useEffect(() => {
-    let cancelled = false;
+    const run = async () => {
+      const missing = recipes.filter((r) => r.image === null);
+      if (missing && missing.length > 0) {
+        const recipe = missing[0]?.recipe;
+        const key = recipeDocId(missing[0]);
+        console.log(recipe);
+        console.log(key);
 
-    // find recipes missing images
-    const missing = recipes.filter((r) => !r.image);
-    if (missing.length === 0) return; // nothing to do
-
-    (async () => {
-      // fetch images in parallel
-      const updates = await Promise.all(
-        missing.map(async (r) => {
-          try {
-            const img = await createImage(r.recipe); // or r.title
-            return {
-              key: recipeDocId(r),
-              img: img && img.startsWith("data:image/") ? img : null,
-            };
-          } catch {
-            return { key: recipeDocId(r), img: null };
+        if (recipe) {
+          const img = await createImage(recipe);
+          const dataUrl = img && img.startsWith("data:image/") ? img : null;
+          if (dataUrl) {
+            // set the final image
+            setRecipes((prev) =>
+              prev.map((p) =>
+                recipeDocId(p) === key ? { ...p, image: dataUrl } : p
+              )
+            );
+            try {
+              await saveRecipeImageToFirestore(key, dataUrl);
+              // or: await saveRecipeImageViaStorage(key, dataUrl);
+            } catch (e) {
+              console.warn("Persist failed for", key, e);
+            }
           }
-        })
-      );
-
-      if (cancelled) return;
-
-      // patch images into state
-      setRecipes((prev) =>
-        prev.map((r) => {
-          const key = recipeDocId(r);
-          const u = updates.find((x) => x.key === key);
-          return u && u.img ? { ...r, image: u.img } : r;
-        })
-      );
-
-      // persist any newly-fetched images to Firestore (or Storage+Firestore)
-      const toPersist = updates.filter((u) => u.img);
-      await Promise.all(
-        toPersist.map(async ({ key, img }) => {
-          try {
-            // Simple (stores base64 in Firestore):
-            await saveRecipeImageToFirestore(key, img);
-
-            // Recommended (upload to Storage, save URL in Firestore):
-            // await saveRecipeImageViaStorage(key, img);
-          } catch (e) {
-            console.warn("Failed to persist image for", key, e);
-          }
-        })
-      );
-    })();
-
-    return () => {
-      cancelled = true;
+        }
+      }
     };
-  }, [recipes, createImage]);
+
+    run();
+  }, [recipes]);
 
   // Premium mode
   const [anchorEl, setAnchorEl] = useState(null);
@@ -1276,9 +1251,9 @@ export default function Home() {
                         fontWeight: 600,
                       }}
                       onClick={async () => {
+                        setOpenRecipeModal(false);
                         await deleteRecipe(recipes[selectedRecipeIndex]); // remove await if sync
                         await updateRecipe();
-                        setOpenRecipeModal(false);
                       }}
                     >
                       Delete
@@ -1483,6 +1458,7 @@ export default function Home() {
                     transition: "all 0.2s ease-in-out",
                   }}
                   onClick={async () => {
+                    setLoading(true);
                     if (!user) {
                       setMakeAccountMsg(true);
                       setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
@@ -1493,6 +1469,7 @@ export default function Home() {
                       setRecipes(out);
                       await addRecipes(out);
                     }
+                    setLoading(false);
                   }}
                 >
                   <Tooltip
