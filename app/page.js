@@ -321,6 +321,7 @@ export default function Home() {
   };
 
   const [makeAccountMsg, setMakeAccountMsg] = useState(false);
+  const [accountMsg, setAccountMsg] = useState("");
 
   // ----------------------------------------------------------------
   // AI (kept client-side per your current code; move to API routes later)
@@ -1458,13 +1459,20 @@ export default function Home() {
                     transition: "all 0.2s ease-in-out",
                   }}
                   onClick={async () => {
-                    setLoading(true);
                     if (!user) {
                       setMakeAccountMsg(true);
+                      setAccountMsg("Sign in to generate recipes");
+                      setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
+                      return;
+                    }
+                    if (pantry.length == 0) {
+                      setMakeAccountMsg(true);
+                      setAccountMsg("Add items to pantry first");
                       setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
                       return;
                     }
                     if (pantry.length > 0) {
+                      setLoading(true);
                       const out = await craftRecipes(pantry);
                       setRecipes(out);
                       await addRecipes(out);
@@ -1477,7 +1485,7 @@ export default function Home() {
                     title={
                       <Box sx={{ p: 1 }}>
                         <Typography variant="body1" fontWeight="500">
-                          Sign in to generate recipes
+                          {accountMsg}
                         </Typography>
                         {/* <Typography variant="body2" sx={{ mt: 0.5 }}>
                           Upgrade to <strong>Premium</strong> for unlimited ✨
@@ -1505,7 +1513,7 @@ export default function Home() {
                       },
                     }}
                   >
-                    {userMeta.isPremium
+                    {userMeta.isPremium || !user
                       ? "GENERATE"
                       : `GENERATE [${userMeta.freeGenerationsLeft}/3]`}
                   </Tooltip>
@@ -1747,12 +1755,15 @@ export default function Home() {
           <Divider />
           <Box height={25}></Box>
           {/* pantry stack */}
+
           <Box display="flex" justifyContent="center">
             <Grid
               container
               spacing={2}
               paddingX={1}
-              justifyContent="center" // ✅ correct prop, not sx
+              justifyContent="flex-start" // ✅ correct prop, not sx
+              width={{ xs: "330px", sm: "1365px" }}
+              // backgroundColor="red"
               style={{
                 overflow: "scroll",
               }}
