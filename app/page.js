@@ -44,6 +44,9 @@ import SearchIcon from "@mui/icons-material/Search";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import InputAdornment from "@mui/material/InputAdornment";
+import LogoutIcon from "@mui/icons-material/Logout";
+import AddIcon from "@mui/icons-material/Add";
+import PersonIcon from "@mui/icons-material/Person";
 
 // use image and camera
 import Image from "next/image";
@@ -799,25 +802,14 @@ export default function Home() {
             }}
           >
             <Button
-              variant="outlined"
+              // variant="outlined"
               onClick={handleOpenAddAndOpenCamera}
               sx={{
-                minWidth: 44,
-                height: 44,
-                borderRadius: "999px",
-                borderColor: "text.primary",
                 color: "text.primary",
-                px: 1.25,
-                "&:hover": {
-                  bgcolor: "text.primary",
-                  color: "background.default",
-                },
               }}
               aria-label="Add pantry item"
             >
-              <Typography variant="h5" sx={{ lineHeight: 1 }}>
-                +
-              </Typography>
+              <AddIcon />
             </Button>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -938,7 +930,7 @@ export default function Home() {
                   onClick={handleSignOut}
                   sx={{ textTransform: "none", color: "text.primary" }}
                 >
-                  Sign Out
+                  <LogoutIcon />
                 </Button>
               )}
             </Box>
