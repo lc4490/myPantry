@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export const maxDuration = 30;
 /**
  * POST /api/recipes/craft
  * body: { pantryList: Array<{name: string}> }
