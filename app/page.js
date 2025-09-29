@@ -487,7 +487,7 @@ export default function Home() {
     }
 
     const userUID = auth.currentUser.uid;
-    const ref = doc(pantryColRef(), item);
+    const ref = doc(pantryColRef(), item.toLowerCase());
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const { count = 0, image: existingImage = null } = snap.data() || {};
@@ -769,604 +769,86 @@ export default function Home() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {/* Page wrapper */}
       <Box
-        width="100vw"
-        height="100vh"
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        flexDirection="column"
-        gap={2}
-        bgcolor="background.default"
-        fontFamily="sans-serif"
+        sx={{
+          minHeight: "100vh",
+          bgcolor: "background.default",
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
-        {/* add modal */}
-        <Modal open={openAdd} onClose={handleCloseAdd}>
+        {/* Sticky header */}
+        <Box
+          sx={{
+            position: "sticky",
+            top: 0,
+            zIndex: 1200,
+            bgcolor: "background.default",
+            borderBottom: (t) => `1px solid ${t.palette.divider}`,
+            px: { xs: 1.5, md: 3 },
+          }}
+        >
           <Box
             sx={{
-              position: "absolute",
-              top: "10%",
-              width: "100%",
-              height: "90%",
-              bgcolor: "background.default",
-              border: "2px solid #000",
-              boxShadow: 24,
-              p: 2,
+              height: 64,
               display: "flex",
               alignItems: "center",
-              flexDirection: "column",
-              gap: 3,
-              color: "text.primary",
-              borderColor: "text.primary",
-              borderRadius: "15px",
+              justifyContent: "space-between",
+              gap: 1.5,
             }}
           >
-            {image && (
-              <Box
-                display="flex"
-                justifyContent="center"
-                width="100%"
-                sx={{
-                  borderRadius: "16px",
-                  overflow: "hidden",
-                }}
-              >
-                <Image
-                  src={image}
-                  alt={"Captured"}
-                  width={300}
-                  height={300}
-                  style={{ borderRadius: "16px", objectFit: "cover" }}
-                />
-              </Box>
-            )}
-            {!image && (
-              <>
-                <Button
-                  variant="outlined"
-                  onClick={() => setCameraOpen(true)}
-                  sx={{
-                    color: "text.primary",
-                    borderColor: "text.primary",
-                    "&:hover": {
-                      backgroundColor: "background.default",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
-                  }}
-                >
-                  Open Camera
-                </Button>
-                {/* upload photo */}
-                <Button
-                  variant="outlined"
-                  component="label"
-                  sx={{
-                    color: "text.primary",
-                    borderColor: "text.primary",
-                    "&:hover": {
-                      backgroundColor: "background.default",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
-                  }}
-                >
-                  Upload Photo
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        // Validate file type
-                        const validTypes = [
-                          "image/png",
-                          "image/jpeg",
-                          "image/gif",
-                          "image/webp",
-                        ];
-                        if (!validTypes.includes(file.type)) {
-                          alert(
-                            "Unsupported image format. Please upload a PNG, JPEG, GIF, or WEBP file."
-                          );
-                          return;
-                        }
-
-                        // Validate file size
-                        const maxSize = 20 * 1024 * 1024; // 20 MB in bytes
-                        if (file.size > maxSize) {
-                          alert(
-                            "File is too large. Please upload an image smaller than 20 MB."
-                          );
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setImage(reader.result);
-                          predictItem(reader.result).then(setItemName);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </Button>
-              </>
-            )}
-            <Divider
-              sx={{ width: "100%", backgroundColor: "background.default" }}
-            />
-            <Box width="100%" height="25%">
-              <TextField
-                label=""
-                variant="outlined"
-                fullWidth
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    color: "text.primary",
-                    fontSize: "2.5rem",
-                    fontWeight: "550",
-                    "& fieldset": {
-                      borderColor: "lightgray",
-                    },
-                    "&:hover fieldset": {
-                      borderColor: "lightgray",
-                    },
-                    "&.Mui-focused fieldset": {
-                      borderColor: "lightgray",
-                    },
-                  },
-                  "& .MuiInputLabel-root": {
-                    color: "text.primary",
-                    fontSize: "2.5rem",
-                    fontWeight: "550",
-                  },
-                }}
-                InputProps={{
-                  style: {
-                    textAlign: "center",
-                    fontSize: "1.5rem",
-                  },
-                }}
-                InputLabelProps={{
-                  style: {
-                    color: "text.primary",
-                    width: "100%",
-                    fontSize: "1.5rem",
-                  },
-                }}
-              />
-            </Box>
-            <Stack
-              width="100%"
-              direction="column"
-              spacing={2}
-              justifyContent="space-between"
-            >
-              <Stack
-                width="100%"
-                direction="row"
-                justifyContent="end"
-                alignItems="center"
-              >
-                <Button
-                  sx={{
-                    backgroundColor: "lightgray",
-                    color: "black",
-                    borderColor: "lightgray",
-                    borderRadius: "50px",
-                    height: "50px",
-                    minWidth: "50px",
-                    "&:hover": {
-                      backgroundColor: "darkgray",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
-                  }}
-                  onClick={() =>
-                    setQuantity((prev) => Math.max(0, parseInt(prev) - 1))
-                  }
-                >
-                  -
-                </Button>
-                <TextField
-                  label=""
-                  variant="outlined"
-                  value={parseInt(quantity)}
-                  onChange={(e) => setQuantity(parseInt(e.target.value))}
-                  sx={{
-                    width: "50px",
-                    "& .MuiOutlinedInput-root": {
-                      color: "text.primary",
-                      "& fieldset": {
-                        borderColor: "background.default",
-                      },
-                      "&:hover fieldset": {
-                        borderColor: "background.default",
-                      },
-                      "&.Mui-focused fieldset": {
-                        borderColor: "lightgray",
-                      },
-                    },
-                    "& .MuiInputLabel-root": {
-                      color: "text.primary",
-                    },
-                  }}
-                  InputLabelProps={{
-                    style: { color: "text.primary", width: "100%" },
-                  }}
-                />
-                <Button
-                  sx={{
-                    backgroundColor: "lightgray",
-                    color: "black",
-                    borderColor: "lightgray",
-                    borderRadius: "50px",
-                    height: "50px",
-                    minWidth: "50px",
-                    "&:hover": {
-                      backgroundColor: "darkgray",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
-                  }}
-                  onClick={() => setQuantity((prev) => parseInt(prev) + 1)}
-                >
-                  +
-                </Button>
-              </Stack>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  addItem(itemName, parseInt(quantity), image);
-                  setItemName("");
-                  setQuantity(1);
-                  handleCloseAdd();
-                }}
-                sx={{
-                  backgroundColor: "text.primary",
-                  color: "background.default",
-                  borderColor: "text.primary",
-                  "&:hover": {
-                    backgroundColor: "darkgray",
-                    color: "text.primary",
-                    borderColor: "text.primary",
-                  },
-                }}
-              >
-                Add
-              </Button>
-            </Stack>
-          </Box>
-        </Modal>
-
-        {/* camera modal */}
-        <Modal open={cameraOpen} onClose={() => setCameraOpen(false)}>
-          <Box width="100vw" height="100vh" backgroundColor="black">
-            <Stack
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              flexDirection="column"
-              sx={{ transform: "translate(0%,25%)" }}
-            >
-              <Box
-                sx={{
-                  // position: 'absolute',
-                  top: "50%",
-                  bgcolor: "black",
-                  width: 350,
-                  height: 350,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  paddingY: 2,
-                  position: "relative",
-                }}
-              >
-                <Typography>
-                  Use the camera to identify items in your pantry, or click exit
-                  to manually enter them in.
-                </Typography>
-                <Box
-                  sx={{
-                    // width: '50%', // This makes the width of the container 50% of its parent
-                    maxWidth: 350, // Optional: Limit the maximum width
-                    aspectRatio: "1/1", // Ensures the box is a square
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    position: "relative", // Allows the button to be positioned over the video feed
-                    backgroundColor: "black", // Background color for the box
-                    borderRadius: "16px", // Optional: adds rounded corners
-                    overflow: "hidden", // Ensures the video doesn't overflow the container
-                  }}
-                >
-                  <Webcam
-                    ref={webcamRef}
-                    screenshotFormat="image/jpeg"
-                    videoConstraints={{
-                      facingMode: facingMode,
-                      // aspectRatio: 4/3,
-                    }}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover", // Ensures the video covers the square without distortion
-                    }}
-                  />
-                </Box>
-              </Box>
-              <Stack flexDirection="row" gap={2} position="relative">
-                <Button
-                  variant="outlined"
-                  onClick={captureImage}
-                  sx={{
-                    color: "black",
-                    borderColor: "white",
-                    backgroundColor: "white",
-                    "&:hover": {
-                      backgroundColor: "white",
-                      color: "black",
-                      borderColor: "white",
-                    },
-                    marginTop: 1,
-                  }}
-                >
-                  Take Photo
-                </Button>
-                <Button
-                  onClick={switchCamera}
-                  sx={{
-                    color: "black",
-                    borderColor: "white",
-                    backgroundColor: "white",
-                    "&:hover": {
-                      backgroundColor: "white",
-                      color: "black",
-                      borderColor: "white",
-                    },
-                    marginTop: 1,
-                  }}
-                >
-                  Switch Camera
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setCameraOpen(false);
-                  }}
-                  sx={{
-                    color: "black",
-                    borderColor: "white",
-                    backgroundColor: "white",
-                    "&:hover": {
-                      backgroundColor: "white",
-                      color: "black",
-                      borderColor: "white",
-                    },
-                    marginTop: 1,
-                  }}
-                >
-                  Exit
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
-        </Modal>
-
-        {/* recipe modal */}
-        {/* recipe modal (simplified, drop-in) */}
-        <Modal open={openRecipeModal} onClose={() => setOpenRecipeModal(false)}>
-          {loading ? (
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                backgroundColor: "black",
-              }}
-              width="600px"
-              height="600px"
-              display="flex"
-              justifyContent={"center"}
-              alignItems={"center"}
-            >
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: { xs: "90vw", sm: 520 },
-                maxHeight: "90vh",
-                bgcolor: "background.default",
-                borderRadius: 2,
-                boxShadow: 24,
-                p: 2,
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                overflow: "auto",
-              }}
-            >
-              {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
-                <>
-                  {/* Image banner */}
-                  <Box
-                    sx={{
-                      position: "relative",
-                      width: "100%",
-                      aspectRatio: "16 / 9",
-                      bgcolor: "action.hover",
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {recipes[selectedRecipeIndex].image ? (
-                      <Image
-                        src={recipes[selectedRecipeIndex].image}
-                        alt="recipe"
-                        fill
-                        style={{ objectFit: "cover" }}
-                        sizes="(max-width: 600px) 100vw, 600px"
-                        priority
-                      />
-                    ) : (
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          inset: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <CircularProgress />
-                      </Box>
-                    )}
-                  </Box>
-
-                  {/* Title */}
-                  <Typography variant="h6" fontWeight={700}>
-                    {recipes[selectedRecipeIndex].recipe}
-                  </Typography>
-
-                  {/* Ingredients */}
-                  {recipes[selectedRecipeIndex].ingredients && (
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                      <strong>Ingredients:</strong>{" "}
-                      {recipes[selectedRecipeIndex].ingredients}
-                    </Typography>
-                  )}
-
-                  {/* Instructions */}
-                  {recipes[selectedRecipeIndex].instructions && (
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                      <strong>Instructions:</strong>{" "}
-                      {recipes[selectedRecipeIndex].instructions}
-                    </Typography>
-                  )}
-
-                  {/* Actions */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 1,
-                      pt: 1,
-                    }}
-                  >
-                    <Button
-                      variant="outlined"
-                      onClick={() => setOpenRecipeModal(false)}
-                      sx={{ borderRadius: 1.5, textTransform: "none", px: 2 }}
-                    >
-                      Close
-                    </Button>
-
-                    <Button
-                      variant="contained"
-                      color="error"
-                      sx={{
-                        borderRadius: 1.5,
-                        textTransform: "none",
-                        px: 2,
-                        fontWeight: 600,
-                      }}
-                      onClick={async () => {
-                        setOpenRecipeModal(false);
-                        await deleteRecipe(recipes[selectedRecipeIndex]); // remove await if sync
-                        await updateRecipe();
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </Box>
-                </>
-              )}
-            </Box>
-          )}
-        </Modal>
-
-        {/* main page */}
-        <Box width="100%" height="100%" bgcolor="background.default">
-          {/* header including add button, title, sign in */}
-          <Box
-            height="10%"
-            bgcolor="background.default"
-            display="flex"
-            justifyContent="space-between"
-            paddingX={2.5}
-            alignItems="center"
-            position="relative"
-          >
-            {/* add button */}
             <Button
               variant="outlined"
               onClick={handleOpenAddAndOpenCamera}
               sx={{
-                height: "55px",
-                fontSize: "1rem",
-                backgroundColor: "background.default",
+                minWidth: 44,
+                height: 44,
+                borderRadius: "999px",
+                borderColor: "text.primary",
                 color: "text.primary",
-                borderColor: "background.default",
-                borderRadius: "50px",
+                px: 1.25,
                 "&:hover": {
-                  backgroundColor: "text.primary",
+                  bgcolor: "text.primary",
                   color: "background.default",
-                  borderColor: "text.primary",
                 },
               }}
+              aria-label="Add pantry item"
             >
-              <Typography variant="h5">+</Typography>
+              <Typography variant="h5" sx={{ lineHeight: 1 }}>
+                +
+              </Typography>
             </Button>
-            {/* title */}
-            <Box
-              display="flex"
-              flexDirection={"row"}
-              alignItems={"center"}
-              gap={0.5}
-            >
-              {/* <IconButton 
-                  sx={{ ml: 1 }} 
-                  onClick={() => setDarkMode(!darkMode)} 
-                  color="inherit"
-                >
-                  {darkMode ? <Brightness7 /> : <Brightness4 />}
-                </IconButton> */}
-              <Typography variant="h6" color="text.primary" textAlign="center">
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography
+                variant="h6"
+                color="text.primary"
+                sx={{ fontWeight: 700 }}
+              >
                 myPantry
               </Typography>
               <Button
                 variant="contained"
                 disabled={upgradeLoading}
-                // onClick={handleClick}
                 onClick={(e) => setAnchorEl(e.currentTarget)}
                 sx={{
-                  minWidth: "40px",
-                  height: "30px",
-                  borderRadius: "8px",
-                  px: 1,
-                  py: 1,
+                  height: 32,
+                  borderRadius: 1,
+                  px: 1.25,
+                  py: 0.5,
                   bgcolor: "text.primary",
                   color: "background.default",
-                  fontWeight: 600,
-                  "&:hover": {
-                    bgcolor: "text.secondary",
-                  },
+                  fontWeight: 700,
+                  textTransform: "none",
+                  "&:hover": { opacity: 0.9 },
                 }}
               >
-                {userMeta.tier ? userMeta.tier : "Upgrade"}
+                {userMeta.tier ? userMeta.tier.toUpperCase() : "Upgrade"}
               </Button>
 
-              {userMeta.isPremium && (
+              {/* Premium/Upgrade menus (unchanged) */}
+              {userMeta.isPremium ? (
                 <Menu
                   anchorEl={anchorEl}
                   open={open}
@@ -1380,11 +862,7 @@ export default function Home() {
                     sx={{
                       color: "primary.main",
                       fontWeight: 600,
-                      "&:hover": {
-                        bgcolor: "primary.light",
-                        color: "white",
-                        "& .MuiSvgIcon-root": { color: "white" },
-                      },
+                      "&:hover": { bgcolor: "primary.light", color: "white" },
                     }}
                   >
                     <ListItemIcon>
@@ -1396,8 +874,7 @@ export default function Home() {
                     <ListItemText primary="Manage Subscription" />
                   </MenuItem>
                 </Menu>
-              )}
-              {!userMeta.isPremium && (
+              ) : (
                 <Menu
                   anchorEl={anchorEl}
                   open={open}
@@ -1407,16 +884,11 @@ export default function Home() {
                 >
                   <MenuItem
                     onClick={() => handleSelect("starter")}
-                    // disabled={cancelLoading || !auth.currentUser?.email}
                     sx={{
                       fontWeight: 600,
                       borderRadius: 2,
                       mb: 1,
-                      "&:hover": {
-                        bgcolor: "#3b82f6", // Tailwind blue-500
-                        color: "white",
-                        "& .MuiSvgIcon-root": { color: "white" },
-                      },
+                      "&:hover": { bgcolor: "#3b82f6", color: "white" },
                     }}
                   >
                     <ListItemIcon>
@@ -1430,18 +902,12 @@ export default function Home() {
                       primaryTypographyProps={{ fontWeight: 600 }}
                     />
                   </MenuItem>
-
                   <MenuItem
                     onClick={() => handleSelect("pro")}
-                    // disabled={cancelLoading || !auth.currentUser?.email}
                     sx={{
                       fontWeight: 600,
                       borderRadius: 2,
-                      "&:hover": {
-                        bgcolor: "#a855f7", // Tailwind purple-500
-                        color: "white",
-                        "& .MuiSvgIcon-root": { color: "white" },
-                      },
+                      "&:hover": { bgcolor: "#a855f7", color: "white" },
                     }}
                   >
                     <ListItemIcon>
@@ -1458,150 +924,104 @@ export default function Home() {
                 </Menu>
               )}
             </Box>
-            {/* sign in */}
+
             <Box>
               {!user ? (
                 <Button
                   onClick={handleSignIn}
-                  sx={{
-                    justifyContent: "end",
-                    right: "2%",
-                    backgroundColor: "background.default",
-                    color: "text.primary",
-                    borderColor: "text.primary",
-                    "&:hover": {
-                      backgroundColor: "text.primary",
-                      color: "background.default",
-                      borderColor: "text.primary",
-                    },
-                  }}
+                  sx={{ textTransform: "none", color: "text.primary" }}
                 >
                   Sign In
                 </Button>
               ) : (
                 <Button
                   onClick={handleSignOut}
-                  sx={{
-                    backgroundColor: "background.default",
-                    color: "text.primary",
-                    borderColor: "text.primary",
-                    borderWidth: 2,
-                    "&:hover": {
-                      backgroundColor: "darkgray",
-                      color: "text.primary",
-                      borderColor: "text.primary",
-                    },
-                  }}
+                  sx={{ textTransform: "none", color: "text.primary" }}
                 >
                   Sign Out
                 </Button>
               )}
             </Box>
           </Box>
+        </Box>
 
-          <Divider />
-
-          {/* banner image */}
+        {/* Banner */}
+        <Box sx={{ width: "100%", overflow: "hidden" }}>
           <Image
             src={"/banner.png"}
             alt="banner"
-            // layout="responsive"
-            width={800}
-            height={200}
+            width={1920}
+            height={480}
             style={{ width: "100%", height: "auto" }}
           />
+        </Box>
 
-          {/* recipes */}
-          <Stack flexDirection="row">
-            {/* title */}
-            <Stack
-              flexDirection="row"
-              alignItems="center"
-              gap={{ sx: 1.5, md: 2 }}
-            >
-              <Typography
-                padding={2}
-                variant="h4"
-                color="text.primary"
-                fontWeight="bold"
-              >
+        {/* Content */}
+        <Box sx={{ flex: 1, px: { xs: 1.5, md: 3 }, py: 3 }}>
+          {/* Recipes Section */}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              alignItems: { xs: "stretch", md: "center" },
+              justifyContent: "space-between",
+              // backgroundColor: "red",
+              gap: 2,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Typography variant="h4" fontWeight={800}>
                 Recipes
               </Typography>
               {loading ? (
-                <CircularProgress />
+                <CircularProgress size={24} />
               ) : (
                 <Button
                   variant="contained"
                   disabled={loading}
-                  sx={{
-                    borderRadius: "8px",
-                    px: { sx: 0, md: 3 },
-                    py: { sx: 0, md: 1 },
-                    fontWeight: "bold",
-                    textTransform: "none",
-                    background: "linear-gradient(90deg, #6b7280, #9ca3af)",
-                    boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
-                    color: "white",
-                    "&:hover": {
-                      background: "linear-gradient(90deg, #4b5563, #6b7280)",
-                      transform: "scale(1.05)",
-                    },
-                    transition: "all 0.2s ease-in-out",
-                  }}
                   onClick={async () => {
                     if (!user) {
                       setMakeAccountMsg(true);
                       setAccountMsg("Sign in to generate recipes");
-                      setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
+                      setTimeout(() => setMakeAccountMsg(false), 2500);
                       return;
                     }
-                    if (pantry.length == 0) {
+                    if (pantry.length === 0) {
                       setMakeAccountMsg(true);
                       setAccountMsg("Add items to pantry first");
-                      setTimeout(() => setMakeAccountMsg(false), 2500); // auto-hide after 2.5s
+                      setTimeout(() => setMakeAccountMsg(false), 2500);
                       return;
                     }
-                    if (pantry.length > 0) {
-                      setLoading(true);
+                    setLoading(true);
+                    try {
                       const out = await craftRecipes(pantry);
                       setRecipes(out);
                       await addRecipes(out);
+                    } finally {
+                      setLoading(false);
                     }
-                    setLoading(false);
+                  }}
+                  sx={{
+                    borderRadius: 1.25,
+                    textTransform: "none",
+                    fontWeight: 700,
+                    background: "linear-gradient(90deg, #6b7280, #9ca3af)",
+                    "&:hover": {
+                      background: "linear-gradient(90deg, #4b5563, #6b7280)",
+                    },
                   }}
                 >
                   <Tooltip
                     open={makeAccountMsg}
                     title={
                       <Box sx={{ p: 1 }}>
-                        <Typography variant="body1" fontWeight="500">
+                        <Typography variant="body1" fontWeight={500}>
                           {accountMsg}
                         </Typography>
-                        {/* <Typography variant="body2" sx={{ mt: 0.5 }}>
-                          Upgrade to <strong>Premium</strong> for unlimited ✨
-                        </Typography> */}
                       </Box>
                     }
                     placement="top"
                     arrow
-                    TransitionComponent={Zoom} // gives a zoom-in animation
-                    slotProps={{
-                      popper: {
-                        sx: {
-                          "& .MuiTooltip-tooltip": {
-                            bgcolor: "white",
-                            color: "black",
-                            border: "1px solid lightgray",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            borderRadius: "12px",
-                            maxWidth: 250,
-                          },
-                          "& .MuiTooltip-arrow": {
-                            color: "white",
-                          },
-                        },
-                      },
-                    }}
                   >
                     {userMeta.isPremium || !user
                       ? "GENERATE"
@@ -1609,312 +1029,226 @@ export default function Home() {
                   </Tooltip>
                 </Button>
               )}
-            </Stack>
+            </Box>
 
-            {/* search bar */}
+            {/* Recipes search */}
             <Autocomplete
               freeSolo
               disableClearable
-              options={recipes?.map((option) => option.recipe)}
-              onInputChange={(event, newInputValue) => {
-                setRecipeSearchTerm(newInputValue);
-              }}
+              options={recipes?.map((o) => o.recipe)}
+              onInputChange={(_, v) => setRecipeSearchTerm(v)}
               ListboxProps={{
                 component: "div",
-                sx: {
-                  backgroundColor: "background.default",
-                  color: "text.primary",
-                },
+                sx: { bgcolor: "background.default", color: "text.primary" },
               }}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  variant="outlined"
+                  placeholder="Search recipes..."
                   onFocus={() => setIsFocusedRecipe(true)}
                   onBlur={() => setIsFocusedRecipe(false)}
                   sx={{
-                    position: "absolute",
-                    right: "2%",
-                    paddingY: 1,
-                    transform: "translateY(0%)",
+                    ml: { xs: 0, md: "auto" },
                     width: isFocusedRecipe
-                      ? "25%"
-                      : `${Math.max(recipeSearchTerm.length, 0) + 5}ch`,
-                    transition: "width 0.3s",
+                      ? { xs: "100%", md: "28ch" }
+                      : {
+                          xs: "100%",
+                          md: `${Math.max(recipeSearchTerm.length, 0) + 10}ch`,
+                        },
+                    transition: "width 0.25s",
                     "& .MuiOutlinedInput-root": {
-                      bgcolor: "background.default",
-                      color: "text.primary",
-                      "& fieldset": {
-                        borderColor: "background.default",
-                      },
-                      "&:hover fieldset": {
-                        borderColor: "text.primary",
-                      },
-                      "&.Mui-focused fieldset": {
-                        borderColor: "text.primary",
-                      },
-                    },
-                    "& .MuiInputBase-input": {
-                      color: "text.primary",
+                      "& fieldset": { borderColor: "divider" },
+                      "&:hover fieldset": { borderColor: "text.primary" },
                     },
                   }}
                   InputProps={{
+                    ...params.InputProps,
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon style={{ color: "text.primary" }} />
+                        <SearchIcon sx={{ color: "text.primary" }} />
                       </InputAdornment>
                     ),
-                  }}
-                  InputLabelProps={{
-                    style: {
-                      color: "text.primary",
-                      width: "100%",
-                      textAlign: "center",
-                      right: "1%",
-                    },
                   }}
                 />
               )}
             />
-          </Stack>
-          <Divider />
-          {/* recipes stack */}
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          {/* Recipes carousel/grid */}
           <Stack
-            paddingX={2}
-            flexDirection="row"
+            direction="row"
             alignItems="flex-start"
-            style={{ overflow: "scroll" }}
+            sx={{ overflowX: "auto", px: 0.5 }}
           >
-            {filteredRecipes?.map(
-              ({ recipe, ingredients, instructions, image }, index) => (
-                <Button
-                  key={index}
-                  sx={{ color: "text.primary", marginRight: 2, flexShrink: 0 }}
-                  onClick={() => handleRecipeModal(index)}
+            {filteredRecipes?.map(({ recipe, image }, index) => (
+              <Button
+                key={index}
+                onClick={() => handleRecipeModal(index)}
+                sx={{ color: "text.primary", flexShrink: 0, mr: 2 }}
+              >
+                <Box
+                  sx={{
+                    width: 275,
+                    p: 1,
+                    borderRadius: 2,
+                    boxShadow: 1,
+                    bgcolor: "background.paper",
+                  }}
                 >
-                  {/* recipe item */}
                   <Box
-                    display="flex"
-                    flexDirection="column"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    bgcolor="background.default"
-                    padding={1}
                     sx={{
-                      width: "275px",
-                      borderRadius: "10px",
-                      boxShadow: "0 4px 8px rgba(0, 0, 0, 0.1)",
+                      width: "100%",
+                      height: 200,
+                      borderRadius: 1.5,
                       overflow: "hidden",
+                      bgcolor: "action.hover",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
-                    {/* recipe image */}
-                    <Stack
-                      direction="column"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      {image && image !== null ? (
-                        <Image
-                          src={image}
-                          alt={recipe}
-                          width={200}
-                          height={200}
-                          style={{ borderRadius: "10px" }}
-                        />
-                      ) : (
-                        <Box
-                          width={200}
-                          height={200}
-                          display={"flex"}
-                          justifyContent={"center"}
-                          alignItems={"center"}
-                        >
-                          <CircularProgress />
-                        </Box>
-                        // <Image
-                        //   src="/recipe.jpg"
-                        //   alt={recipe}
-                        //   width={200}
-                        //   height={200}
-                        //   style={{ borderRadius: "10px", objectFit: "cover" }}
-                        // />
-                      )}
-                    </Stack>
-                    {/* recipe name */}
-                    <Stack>
-                      <Typography
-                        variant="h5"
-                        color="text.primary"
-                        textAlign="center"
-                        fontWeight="550"
+                    {image ? (
+                      <Image
+                        src={image}
+                        alt={recipe}
+                        width={400}
+                        height={300}
                         style={{
-                          flexGrow: 1,
-                          textAlign: "center",
-                          overflow: "hidden",
-                          padding: 5,
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
                         }}
-                      >
-                        {recipe &&
-                          truncateString(
-                            recipe.charAt(0).toUpperCase() + recipe.slice(1),
-                            50
-                          )}
-                      </Typography>
-                    </Stack>
+                      />
+                    ) : (
+                      <CircularProgress size={24} />
+                    )}
                   </Box>
-                </Button>
-              )
-            )}
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={700}
+                    sx={{ mt: 1, textAlign: "center" }}
+                  >
+                    {recipe &&
+                      truncateString(
+                        recipe.charAt(0).toUpperCase() + recipe.slice(1),
+                        50
+                      )}
+                  </Typography>
+                </Box>
+              </Button>
+            ))}
           </Stack>
 
-          {/* pantry */}
-          <Stack flexDirection="row">
-            {/* title */}
-            <Typography
-              padding={2}
-              variant="h4"
-              color="text.primary"
-              fontWeight="bold"
-            >
+          {/* Pantry Section */}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              alignItems: { xs: "stretch", md: "center" },
+              justifyContent: "space-between",
+              gap: 2,
+              mt: 4,
+            }}
+          >
+            <Typography variant="h4" fontWeight={800}>
               In your Pantry
             </Typography>
-            {/* search bar */}
             <Autocomplete
               freeSolo
               disableClearable
-              options={pantry.map((option) => option.name)}
-              onInputChange={(event, newInputValue) => {
-                setSearchTerm(newInputValue);
-              }}
+              options={pantry.map((o) => o.name)}
+              onInputChange={(_, v) => setSearchTerm(v)}
               ListboxProps={{
                 component: "div",
-                sx: {
-                  backgroundColor: "background.default",
-                  color: "text.primary",
-                },
+                sx: { bgcolor: "background.default", color: "text.primary" },
               }}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  variant="outlined"
+                  placeholder="Search pantry..."
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
                   sx={{
-                    position: "absolute",
-                    right: "2%",
-                    paddingY: 1,
-                    transform: "translateY(0%)",
+                    ml: { xs: 0, md: "auto" },
                     width: isFocused
-                      ? "25%"
-                      : `${Math.max(searchTerm.length, 0) + 5}ch`,
-                    transition: "width 0.3s",
+                      ? { xs: "100%", md: "28ch" }
+                      : {
+                          xs: "100%",
+                          md: `${Math.max(searchTerm.length, 0) + 10}ch`,
+                        },
+                    transition: "width 0.25s",
                     "& .MuiOutlinedInput-root": {
-                      "& fieldset": {
-                        borderColor: "background.default",
-                      },
-                      "&:hover fieldset": {
-                        borderColor: "text.primary",
-                      },
-                      "&.Mui-focused fieldset": {
-                        borderColor: "text.primary",
-                      },
-                    },
-                    "& .MuiInputBase-input": {
-                      color: "text.primary",
+                      "& fieldset": { borderColor: "divider" },
+                      "&:hover fieldset": { borderColor: "text.primary" },
                     },
                   }}
                   InputProps={{
+                    ...params.InputProps,
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon style={{ color: "text.primary" }} />
+                        <SearchIcon sx={{ color: "text.primary" }} />
                       </InputAdornment>
                     ),
-                  }}
-                  InputLabelProps={{
-                    style: {
-                      color: "text.primary",
-                      width: "100%",
-                      textAlign: "center",
-                      right: "1%",
-                    },
                   }}
                 />
               )}
             />
-          </Stack>
-          <Divider />
-          <Box height={25}></Box>
-          {/* pantry stack */}
+          </Box>
 
-          <Box display="flex" justifyContent="center">
+          <Divider sx={{ my: 2 }} />
+
+          {/* Pantry grid */}
+          <Box sx={{ display: "flex", justifyContent: "center" }}>
             <Grid
               container
               spacing={2}
-              paddingX={1}
-              justifyContent="flex-start" // ✅ correct prop, not sx
-              width={{ xs: "330px", sm: "1365px" }}
-              // backgroundColor="red"
-              style={{
-                overflow: "scroll",
-              }}
+              sx={{ width: { xs: 330, sm: 1365 }, px: 1 }}
             >
               {filteredPantry.map(({ name, count, image }, index) => (
                 <Grid
-                  item
-                  xs={12} // full width on mobile
-                  sm={6} // 2 per row on tablets
-                  md={4} // 3 per row on desktops
                   key={index}
-                  display="flex" // ✅ make item itself flexbox
-                  justifyContent="center" // ✅ ensures each card is centered
+                  item
+                  xs={12}
+                  sm={6}
+                  md={4}
+                  display="flex"
+                  justifyContent="center"
                 >
                   <Box
-                    width="325px"
-                    display="flex"
-                    flexDirection="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    backgroundColor="background.default"
-                    padding={2.5}
-                    border="1px solid lightgray"
-                    borderRadius="10px"
+                    sx={{
+                      width: 325,
+                      p: 2,
+                      borderRadius: 2,
+                      border: (t) => `1px solid ${t.palette.divider}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 2,
+                      bgcolor: "background.paper",
+                    }}
                   >
-                    {/* pantry ingredient name and quantity change */}
-                    <Stack>
-                      <Typography
-                        variant="h6"
-                        color="text.primary"
-                        textAlign="left"
-                        style={{
-                          flexGrow: 1,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
                         {truncateString(
                           name.charAt(0).toUpperCase() + name.slice(1),
                           16
                         )}
                       </Typography>
-                      {/* quantity adjuster */}
                       <Stack
-                        width="100%"
                         direction="row"
-                        justifyContent="start"
                         alignItems="center"
+                        gap={1}
+                        sx={{ mt: 1 }}
                       >
                         <Button
                           sx={{
-                            height: "25px",
-                            minWidth: "25px",
-                            backgroundColor: "lightgray",
-                            color: "black",
-                            borderColor: "lightgray",
-                            borderRadius: "50px",
-                            "&:hover": {
-                              backgroundColor: "darkgray",
-                              color: "text.primary",
-                              borderColor: "text.primary",
-                            },
+                            minWidth: 36,
+                            height: 28,
+                            borderRadius: 999,
+                            bgcolor: "action.hover",
+                            "&:hover": { bgcolor: "action.selected" },
                           }}
                           onClick={() =>
                             handleQuantityChange(name, Math.max(0, count - 1))
@@ -1923,8 +1257,6 @@ export default function Home() {
                           -
                         </Button>
                         <TextField
-                          label=""
-                          variant="outlined"
                           value={parseInt(count)}
                           onChange={(e) =>
                             handleQuantityChange(
@@ -1933,66 +1265,38 @@ export default function Home() {
                             )
                           }
                           sx={{
-                            width: "45px",
+                            width: 56,
                             "& .MuiOutlinedInput-root": {
-                              color: "text.primary",
-                              "& fieldset": {
-                                borderColor: "background.default",
-                              },
-                              "&:hover fieldset": {
-                                borderColor: "background.default",
-                              },
-                              "&.Mui-focused fieldset": {
-                                borderColor: "lightgray",
-                              },
-                            },
-                            "& .MuiInputLabel-root": {
-                              color: "text.primary",
+                              "& fieldset": { borderColor: "divider" },
                             },
                           }}
-                          InputProps={{
-                            sx: {
-                              textAlign: "center",
-                              fontSize: "0.75rem",
-                            },
-                            inputProps: {
-                              style: { textAlign: "center" },
-                            },
-                          }}
-                          InputLabelProps={{
-                            style: {
-                              color: "text.primary",
-                              width: "100%",
-                              textAlign: "center",
-                            },
-                          }}
+                          inputProps={{ style: { textAlign: "center" } }}
                         />
                         <Button
                           sx={{
-                            height: "25px",
-                            minWidth: "25px",
-                            backgroundColor: "lightgray",
-                            color: "black",
-                            borderColor: "lightgray",
-                            borderRadius: "50px",
-                            "&:hover": {
-                              backgroundColor: "darkgray",
-                              color: "text.primary",
-                              borderColor: "text.primary",
-                            },
+                            minWidth: 36,
+                            height: 28,
+                            borderRadius: 999,
+                            bgcolor: "action.hover",
+                            "&:hover": { bgcolor: "action.selected" },
                           }}
                           onClick={() => handleQuantityChange(name, count + 1)}
                         >
                           +
                         </Button>
                       </Stack>
-                    </Stack>
-                    {/* pantry ingredient image */}
-                    <Stack
-                      width="100%"
-                      direction="column"
-                      justifyContent="space-between"
-                      alignItems="flex-end"
+                    </Box>
+                    <Box
+                      sx={{
+                        width: 100,
+                        height: 100,
+                        borderRadius: 1.5,
+                        overflow: "hidden",
+                        bgcolor: "action.hover",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                     >
                       {image ? (
                         <Image
@@ -2000,7 +1304,7 @@ export default function Home() {
                           alt={name}
                           width={100}
                           height={100}
-                          style={{ borderRadius: "10px" }}
+                          style={{ objectFit: "cover" }}
                         />
                       ) : (
                         <Image
@@ -2008,16 +1312,330 @@ export default function Home() {
                           alt={name}
                           width={100}
                           height={100}
-                          style={{ borderRadius: "10px", objectFit: "cover" }}
+                          style={{ objectFit: "cover" }}
                         />
                       )}
-                    </Stack>
+                    </Box>
                   </Box>
                 </Grid>
               ))}
             </Grid>
           </Box>
         </Box>
+
+        {/* ADD ITEM MODAL (same logic; tighter styles) */}
+        <Modal open={openAdd} onClose={handleCloseAdd}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "8%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: { xs: "92%", sm: 520 },
+              maxHeight: "84vh",
+              overflow: "auto",
+              bgcolor: "background.paper",
+              color: "text.primary",
+              borderRadius: 2,
+              border: (t) => `1px solid ${t.palette.divider}`,
+              boxShadow: 24,
+              p: 2,
+            }}
+          >
+            {image ? (
+              <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+                <Image
+                  src={image}
+                  alt="Captured"
+                  width={320}
+                  height={320}
+                  style={{ borderRadius: 12, objectFit: "cover" }}
+                />
+              </Box>
+            ) : (
+              <Stack
+                direction="row"
+                gap={1}
+                justifyContent="center"
+                sx={{ mb: 2 }}
+              >
+                <Button variant="outlined" onClick={() => setCameraOpen(true)}>
+                  Open Camera
+                </Button>
+                <Button variant="outlined" component="label">
+                  Upload Photo
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const valid = [
+                        "image/png",
+                        "image/jpeg",
+                        "image/gif",
+                        "image/webp",
+                      ];
+                      if (!valid.includes(file.type)) {
+                        alert("Please upload PNG/JPEG/GIF/WEBP");
+                        return;
+                      }
+                      if (file.size > 20 * 1024 * 1024) {
+                        alert("Image must be < 20MB");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const dataUrl = reader.result;
+                        setImage(dataUrl);
+                        predictItem(dataUrl).then(setItemName);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </Button>
+              </Stack>
+            )}
+
+            <TextField
+              fullWidth
+              placeholder="Item name"
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              sx={{
+                mb: 2,
+                "& .MuiOutlinedInput-root": {
+                  fontWeight: 600,
+                  fontSize: "1.25rem",
+                },
+              }}
+            />
+
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              gap={2}
+            >
+              <Stack direction="row" alignItems="center" gap={1}>
+                <Button
+                  onClick={() =>
+                    setQuantity((prev) => Math.max(0, parseInt(prev) - 1))
+                  }
+                >
+                  -
+                </Button>
+                <TextField
+                  value={parseInt(quantity)}
+                  onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
+                  sx={{ width: 72 }}
+                  inputProps={{
+                    style: { textAlign: "center", fontWeight: 700 },
+                  }}
+                />
+                <Button
+                  onClick={() => setQuantity((prev) => parseInt(prev) + 1)}
+                >
+                  +
+                </Button>
+              </Stack>
+
+              <Button
+                variant="contained"
+                onClick={() => {
+                  addItem(itemName, parseInt(quantity), image);
+                  setItemName("");
+                  setQuantity(1);
+                  handleCloseAdd();
+                }}
+                sx={{ textTransform: "none", fontWeight: 700 }}
+              >
+                Add
+              </Button>
+            </Stack>
+          </Box>
+        </Modal>
+
+        {/* CAMERA MODAL (centered) */}
+        <Modal open={cameraOpen} onClose={() => setCameraOpen(false)}>
+          <Box
+            sx={{
+              position: "fixed",
+              inset: 0,
+              bgcolor: "rgba(0,0,0,0.8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              p: 2,
+            }}
+          >
+            <Box sx={{ width: 360, maxWidth: "92vw" }}>
+              <Typography sx={{ color: "white", mb: 1, textAlign: "center" }}>
+                Use the camera to identify items, or exit to enter manually.
+              </Typography>
+              <Box
+                sx={{
+                  position: "relative",
+                  width: "100%",
+                  aspectRatio: "1 / 1",
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  bgcolor: "black",
+                }}
+              >
+                <Webcam
+                  ref={webcamRef}
+                  screenshotFormat="image/jpeg"
+                  videoConstraints={{ facingMode }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </Box>
+              <Stack
+                direction="row"
+                gap={1.5}
+                justifyContent="center"
+                sx={{ mt: 2 }}
+              >
+                <Button variant="contained" onClick={captureImage}>
+                  Take Photo
+                </Button>
+                <Button
+                  onClick={() =>
+                    setFacingMode((m) =>
+                      m === "user" ? "environment" : "user"
+                    )
+                  }
+                >
+                  Switch Camera
+                </Button>
+                <Button variant="outlined" onClick={() => setCameraOpen(false)}>
+                  Exit
+                </Button>
+              </Stack>
+            </Box>
+          </Box>
+        </Modal>
+
+        {/* RECIPE MODAL (image-first) */}
+        <Modal open={openRecipeModal} onClose={() => setOpenRecipeModal(false)}>
+          {loading ? (
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                p: 2,
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: { xs: "92%", sm: 560 },
+                maxHeight: "90vh",
+                overflow: "auto",
+                bgcolor: "background.paper",
+                borderRadius: 2,
+                boxShadow: 24,
+                p: 2,
+              }}
+            >
+              {selectedRecipeIndex !== null && recipes[selectedRecipeIndex] && (
+                <>
+                  <Box
+                    sx={{
+                      position: "relative",
+                      width: "100%",
+                      aspectRatio: "16/9",
+                      borderRadius: 1.5,
+                      overflow: "hidden",
+                      bgcolor: "action.hover",
+                    }}
+                  >
+                    {recipes[selectedRecipeIndex].image ? (
+                      <Image
+                        src={recipes[selectedRecipeIndex].image}
+                        alt="recipe"
+                        fill
+                        style={{ objectFit: "cover" }}
+                        sizes="(max-width: 600px) 100vw, 600px"
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <CircularProgress />
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Typography variant="h6" fontWeight={800} sx={{ mt: 1.5 }}>
+                    {recipes[selectedRecipeIndex].recipe}
+                  </Typography>
+
+                  {recipes[selectedRecipeIndex].ingredients && (
+                    <Typography
+                      variant="body2"
+                      sx={{ whiteSpace: "pre-wrap", mt: 1 }}
+                    >
+                      <strong>Ingredients:</strong>{" "}
+                      {recipes[selectedRecipeIndex].ingredients}
+                    </Typography>
+                  )}
+
+                  {recipes[selectedRecipeIndex].instructions && (
+                    <Typography
+                      variant="body2"
+                      sx={{ whiteSpace: "pre-wrap", mt: 1 }}
+                    >
+                      <strong>Instructions:</strong>{" "}
+                      {recipes[selectedRecipeIndex].instructions}
+                    </Typography>
+                  )}
+
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    sx={{ mt: 2 }}
+                  >
+                    <Button
+                      variant="outlined"
+                      onClick={() => setOpenRecipeModal(false)}
+                      sx={{ textTransform: "none" }}
+                    >
+                      Close
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="error"
+                      sx={{ textTransform: "none", fontWeight: 700 }}
+                      onClick={async () => {
+                        setOpenRecipeModal(false);
+                        await deleteRecipe(recipes[selectedRecipeIndex]);
+                        await updateRecipe();
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </Stack>
+                </>
+              )}
+            </Box>
+          )}
+        </Modal>
       </Box>
     </ThemeProvider>
   );

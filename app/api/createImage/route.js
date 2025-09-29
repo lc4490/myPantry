@@ -29,10 +29,6 @@ export async function POST(req) {
         response_format: "b64_json",
       });
       const b64 = response.data?.[0]?.b64_json;
-      console.log(
-        "Generated image data:",
-        b64 ? b64.slice(0, 30) + "..." : null
-      );
       return NextResponse.json({
         dataUrl: b64 ? `data:image/png;base64,${b64}` : null,
       });
