@@ -844,7 +844,7 @@ export default function Home() {
                   "&:hover": { opacity: 0.9 },
                 }}
               >
-                {userMeta.tier ? userMeta.tier.toUpperCase() : "Upgrade"}
+                {userMeta.tier ? userMeta.tier.toUpperCase() : "UPGRADE"}
               </Button>
 
               {/* Premium/Upgrade menus (unchanged) */}
