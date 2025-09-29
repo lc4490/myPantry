@@ -277,7 +277,11 @@ export default function Home() {
     const snapshot = query(pantryColRef());
     const docsSnap = await getDocs(snapshot);
     const list = [];
-    docsSnap.forEach((d) => list.push({ name: d.id, ...d.data() }));
+    docsSnap.forEach((d) => {
+      const name = d.id.charAt(0).toUpperCase() + d.id.slice(1);
+      list.push({ name, ...d.data() });
+    });
+
     setPantry(list);
   };
 
@@ -302,8 +306,8 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [recipeSearchTerm, setRecipeSearchTerm] = useState("");
 
-  const [isFocused, setIsFocused] = useState(false);
-  const [isFocusedRecipe, setIsFocusedRecipe] = useState(false);
+  // const [isFocused, setIsFocused] = useState(false);
+  // const [isFocusedRecipe, setIsFocusedRecipe] = useState(false);
 
   // Add modal inputs
   const [itemName, setItemName] = useState("");
@@ -514,7 +518,7 @@ export default function Home() {
     }
 
     const userUID = auth.currentUser.uid;
-    const ref = doc(pantryColRef(), item);
+    const ref = doc(pantryColRef(), item.toLowerCase());
     if (n === 0) {
       await deleteDoc(ref);
     } else {
@@ -1037,16 +1041,17 @@ export default function Home() {
                 <TextField
                   {...params}
                   placeholder="Search recipes..."
-                  onFocus={() => setIsFocusedRecipe(true)}
-                  onBlur={() => setIsFocusedRecipe(false)}
+                  // onFocus={() => setIsFocusedRecipe(true)}
+                  // onBlur={() => setIsFocusedRecipe(false)}
                   sx={{
                     ml: { xs: 0, md: "auto" },
-                    width: isFocusedRecipe
-                      ? { xs: "100%", md: "28ch" }
-                      : {
-                          xs: "100%",
-                          md: `${Math.max(recipeSearchTerm.length, 0) + 10}ch`,
-                        },
+                    width: { xs: "100%", md: "28ch" },
+                    // width: isFocusedRecipe
+                    //   ? { xs: "100%", md: "28ch" }
+                    //   : {
+                    //       xs: "100%",
+                    //       md: `${Math.max(recipeSearchTerm.length, 0) + 10}ch`,
+                    //     },
                     transition: "width 0.25s",
                     "& .MuiOutlinedInput-root": {
                       "& fieldset": { borderColor: "divider" },
@@ -1160,16 +1165,17 @@ export default function Home() {
                 <TextField
                   {...params}
                   placeholder="Search pantry..."
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
+                  // onFocus={() => setIsFocused(true)}
+                  // onBlur={() => setIsFocused(false)}
                   sx={{
                     ml: { xs: 0, md: "auto" },
-                    width: isFocused
-                      ? { xs: "100%", md: "28ch" }
-                      : {
-                          xs: "100%",
-                          md: `${Math.max(searchTerm.length, 0) + 10}ch`,
-                        },
+                    width: { xs: "100%", md: "28ch" },
+                    // width: isFocused
+                    //   ? { xs: "100%", md: "28ch" }
+                    //   : {
+                    //       xs: "100%",
+                    //       md: `${Math.max(searchTerm.length, 0) + 10}ch`,
+                    //     },
                     transition: "width 0.25s",
                     "& .MuiOutlinedInput-root": {
                       "& fieldset": { borderColor: "divider" },
