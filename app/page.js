@@ -39,9 +39,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 // search icon
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import SearchIcon from "@mui/icons-material/Search";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
+import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import InputAdornment from "@mui/material/InputAdornment";
-import CancelIcon from "@mui/icons-material/Cancel";
 
 // use image and camera
 import Image from "next/image";
@@ -56,13 +58,13 @@ import Webcam from "react-webcam";
 import { onAuthStateChanged } from "firebase/auth";
 
 // theme imports
+import { startCheckout } from "@/lib/upgrade";
 import {
   createTheme,
   CssBaseline,
   ThemeProvider,
   useMediaQuery,
 } from "@mui/material";
-import { startCheckout } from "@/lib/upgrade";
 
 const lightTheme = createTheme({
   palette: {
@@ -103,6 +105,7 @@ export default function Home() {
   const [guestMode, setGuestMode] = useState(false);
   const [userMeta, setUserMeta] = useState({
     isPremium: false,
+    tier: null,
     freeGenerationsLeft: 0,
   });
   const [bigLoading, setBigloading] = useState(true);
@@ -197,46 +200,54 @@ export default function Home() {
   };
 
   async function refreshUserMeta() {
-    const email = userEmailKey();
+    const email = (auth.currentUser?.email || "").toLowerCase();
     if (!email) {
-      setUserMeta({ isPremium: false, freeGenerationsLeft: 0 });
+      setUserMeta({ isPremium: false, tier: null, freeGenerationsLeft: 0 });
       return;
     }
 
-    // Read your existing doc (for the counter)
-    const snap = await getDoc(doc(firestore, "users", email));
+    // 1) read existing (for the counter)
+    const ref = doc(firestore, "users", email);
+    const snap = await getDoc(ref);
     const d = snap.data() || {};
-    let premium = false;
 
-    // Ask Stripe (server) for the truth
+    // 2) ask Stripe (server truth)
+    let isPremium = false;
+    let tier = null;
     try {
       const res = await fetch("/api/stripe/is-premium", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json();
-      if (res.ok) premium = !!data.isPremium;
+      if (res.ok) {
+        const data = await res.json();
+        isPremium = !!data.isPremium;
+        tier = data.tier || null; // "starter" | "pro" | null
+      }
     } catch (e) {
       console.warn("[refreshUserMeta] premium check failed:", e?.message);
     }
 
-    // Optional: mirror into Firestore for convenience (client-side write)
-    // (Only if your security rules allow users to update their own doc.)
+    // 3) mirror to Firestore (optional but handy for admin/analytics/UI)
     try {
-      if (premium !== !!d.isPremium) {
-        await setDoc(
-          doc(firestore, "users", email),
-          { isPremium: premium },
-          { merge: true }
-        );
-      }
+      await setDoc(
+        ref,
+        {
+          isPremium,
+          tier, // "starter" | "pro" | null
+          stripeLastCheckedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (e) {
-      console.warn("[refreshUserMeta] mirror to Firestore failed:", e?.message);
+      console.warn("[refreshUserMeta] mirror write failed:", e?.message);
     }
 
+    // 4) update local UI state
     setUserMeta({
-      isPremium: premium,
+      isPremium,
+      tier,
       freeGenerationsLeft: Number(d.freeGenerationsLeft ?? 0),
     });
   }
@@ -651,6 +662,24 @@ export default function Home() {
       setUpgradeLoading(true);
       const email = auth.currentUser.email.toLowerCase();
       await startCheckout(email);
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Upgrade failed");
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+
+  const handleSelect = async (plan) => {
+    if (!auth.currentUser?.email) {
+      handleSignIn();
+      handleClose?.(); // close any menu/dialog
+      return;
+    }
+    try {
+      setUpgradeLoading(true);
+      const email = auth.currentUser.email.toLowerCase();
+      await startCheckout(email, plan);
     } catch (err) {
       console.error(err);
       alert(err?.message || "Upgrade failed");
@@ -1318,7 +1347,8 @@ export default function Home() {
               <Button
                 variant="contained"
                 disabled={upgradeLoading}
-                onClick={handleClick}
+                // onClick={handleClick}
+                onClick={(e) => setAnchorEl(e.currentTarget)}
                 sx={{
                   minWidth: "40px",
                   height: "30px",
@@ -1333,7 +1363,7 @@ export default function Home() {
                   },
                 }}
               >
-                {userMeta.isPremium ? "Pro" : "Upgrade"}
+                {userMeta.tier ? userMeta.tier : "Upgrade"}
               </Button>
 
               {userMeta.isPremium && (
@@ -1346,24 +1376,84 @@ export default function Home() {
                 >
                   <MenuItem
                     onClick={handleCancel}
-                    disabled={
-                      cancelLoading ||
-                      !auth.currentUser?.email ||
-                      !userMeta?.isPremium
-                    }
+                    disabled={cancelLoading || !auth.currentUser?.email}
                     sx={{
-                      color: "error.main",
+                      color: "primary.main",
                       fontWeight: 600,
                       "&:hover": {
-                        bgcolor: "error.light",
+                        bgcolor: "primary.light",
                         color: "white",
+                        "& .MuiSvgIcon-root": { color: "white" },
                       },
                     }}
                   >
                     <ListItemIcon>
-                      <CancelIcon fontSize="small" sx={{ color: "inherit" }} />
+                      <ManageAccountsIcon
+                        fontSize="small"
+                        sx={{ color: "inherit" }}
+                      />
                     </ListItemIcon>
-                    <ListItemText primary="Cancel Subscription" />
+                    <ListItemText primary="Manage Subscription" />
+                  </MenuItem>
+                </Menu>
+              )}
+              {!userMeta.isPremium && (
+                <Menu
+                  anchorEl={anchorEl}
+                  open={open}
+                  onClose={handleClose}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  transformOrigin={{ vertical: "top", horizontal: "right" }}
+                >
+                  <MenuItem
+                    onClick={() => handleSelect("starter")}
+                    // disabled={cancelLoading || !auth.currentUser?.email}
+                    sx={{
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      mb: 1,
+                      "&:hover": {
+                        bgcolor: "#3b82f6", // Tailwind blue-500
+                        color: "white",
+                        "& .MuiSvgIcon-root": { color: "white" },
+                      },
+                    }}
+                  >
+                    <ListItemIcon>
+                      <StarBorderIcon
+                        fontSize="small"
+                        sx={{ color: "#3b82f6" }}
+                      />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Starter — $6.99/mo"
+                      primaryTypographyProps={{ fontWeight: 600 }}
+                    />
+                  </MenuItem>
+
+                  <MenuItem
+                    onClick={() => handleSelect("pro")}
+                    // disabled={cancelLoading || !auth.currentUser?.email}
+                    sx={{
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      "&:hover": {
+                        bgcolor: "#a855f7", // Tailwind purple-500
+                        color: "white",
+                        "& .MuiSvgIcon-root": { color: "white" },
+                      },
+                    }}
+                  >
+                    <ListItemIcon>
+                      <WorkspacePremiumIcon
+                        fontSize="small"
+                        sx={{ color: "#a855f7" }}
+                      />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Pro — $9.99/mo"
+                      primaryTypographyProps={{ fontWeight: 600 }}
+                    />
                   </MenuItem>
                 </Menu>
               )}
